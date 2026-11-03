@@ -639,10 +639,15 @@ async function checkUpdate() {
   try {
     if (!appVersion) appVersion = await T.app.getVersion();
     canSelfUpdate = false;
+    // O atualizador assinado manda: se ele responde (com ou sem versão nova), vale a resposta dele. O aviso pelo GitHub só entra se ele der erro.
     try {
       const u = await invoke('update_check');
-      if (u) { updateInfo = { version: u.version, url: `https://github.com/${REPO}/releases/latest` }; canSelfUpdate = true; try { localStorage.setItem('glint.lastCheck', String(Date.now())); } catch {} return 'new'; }
-    } catch { /* sem suporte a atualização automática aqui: usa o aviso pelo GitHub */ }
+      try { localStorage.setItem('glint.lastCheck', String(Date.now())); } catch {}
+      if (!u) { updateInfo = null; return 'ok'; }
+      updateInfo = { version: u.version, url: `https://github.com/${REPO}/releases/latest` };
+      canSelfUpdate = !!u.canInstall;
+      return 'new';
+    } catch { /* offline ou sem latest.json: tenta o aviso pelo GitHub */ }
     const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } });
     if (!r.ok) return 'err';
     const j = await r.json();

@@ -1671,7 +1671,7 @@ dependencies = [
 
 [[package]]
 name = "glint"
-version = "2.6.1"
+version = "2.6.2"
 dependencies = [
  "arboard",
  "chrono",

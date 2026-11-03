@@ -274,7 +274,9 @@ async fn app_uninstall(state: St<'_>, name: String) -> Result<String, String> {
 async fn update_check(app: AppHandle) -> Result<Option<Value>, String> {
     let updater = app.updater().map_err(|e| e.to_string())?;
     let found = updater.check().await.map_err(|e| e.to_string())?;
-    Ok(found.map(|u| json!({ "version": u.version, "notes": u.body })))
+    // Windows e AppImage instalam sozinhos; .deb/.rpm precisam de administrador, então só avisam.
+    let can_install = cfg!(windows) || std::env::var_os("APPIMAGE").is_some();
+    Ok(found.map(|u| json!({ "version": u.version, "notes": u.body, "canInstall": can_install })))
 }
 
 /// Baixa, confere a assinatura, instala e reinicia o Glint.
