@@ -21,6 +21,15 @@ pub fn toggle(app: &AppHandle) {
     }
 }
 
+/// Dá o foco do teclado ao componente que desenha a página. No Linux (WebKitGTK) só focar a janela não basta:
+/// sem o foco do componente, a janela abre mas as teclas não chegam até o campo de busca.
+fn focus_webview(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let wv: &tauri::Webview = w.as_ref();
+        let _ = wv.set_focus();
+    }
+}
+
 pub fn hide(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.hide();
@@ -66,6 +75,7 @@ pub fn show(app: &AppHandle) {
     let t = theme::current();
     let r1 = w.show();
     let r2 = w.set_focus();
+    focus_webview(app);
     crate::dlog!("show: {:?} focus: {:?} visible: {:?} pos: {:?} size: {:?}", r1, r2, w.is_visible(), w.outer_position(), w.outer_size());
     let _ = app.emit(
         "shown",
@@ -86,6 +96,7 @@ pub fn show(app: &AppHandle) {
                     }
                     let _ = w.set_focus();
                 }
+                focus_webview(&app);
                 let _ = app.emit("refocus", ());
             }
         });

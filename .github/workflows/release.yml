@@ -12,6 +12,8 @@ jobs:
   build:
     strategy:
       fail-fast: false
+      # um por vez: os dois builds escrevem o mesmo latest.json e, em paralelo, um apaga o do outro
+      max-parallel: 1
       matrix:
         os: [windows-latest, ubuntu-22.04]
     runs-on: ${{ matrix.os }}
