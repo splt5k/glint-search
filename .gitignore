@@ -10,3 +10,4 @@ _legacy_wpf/
 ~/
 *.key
 .tauri/
+/install-glint.sh

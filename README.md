@@ -28,6 +28,8 @@ Baixe o instalador na página de [Releases](../../releases):
 | Qualquer distro | `.AppImage` (`chmod +x` e executar) |
 | Arch, CachyOS, Manjaro | `packaging/arch/PKGBUILD` (`makepkg -si`) |
 
+**Linux, jeito rápido (AppImage):** baixe o `.AppImage` e o script [`packaging/linux/install-glint.sh`](packaging/linux/install-glint.sh) para a mesma pasta e rode `bash install-glint.sh`. Ele instala em `~/Aplicativos`, cria o atalho no menu e o início automático, e abre o Glint.
+
 Depois de instalado ele inicia com o sistema (dá para desligar nas Configurações).
 
 > **Status no Linux:** o código é portável, mas a maior parte dos testes foi feita no Windows. Veja "Limitações".
