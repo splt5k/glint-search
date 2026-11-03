@@ -1,0 +1,71 @@
+# Glint
+
+Busca rápida para **Windows e Linux** com visual de vidro translúcido: cápsula de busca, atalho global, aplicativos, arquivos, ações, histórico da área de transferência, cálculos e conversões.
+
+*English:* a fast launcher for Windows and Linux with a translucent glass look (Tauri 2: Rust + web UI). MIT licensed. Installers for Windows and Linux are on the [Releases](../../releases) page.
+
+<p align="center">
+  <img src="docs/screenshots/files-light.png" width="48%" alt="Arquivos, tema claro">
+  <img src="docs/screenshots/apps-dark.png" width="48%" alt="Aplicativos, tema escuro">
+</p>
+<p align="center">
+  <img src="docs/screenshots/clipboard-dark.png" width="48%" alt="Área de transferência com imagem, arquivo e texto">
+  <img src="docs/screenshots/actions-light.png" width="48%" alt="Ações rápidas">
+</p>
+<p align="center">
+  <img src="docs/screenshots/settings-dark.png" width="48%" alt="Configurações">
+</p>
+
+## Instalação
+
+Baixe o instalador na página de [Releases](../../releases):
+
+| Sistema | Arquivo |
+|---|---|
+| Windows 10/11 | `Glint_x.y.z_x64-setup.exe` (instala só para o seu usuário, sem administrador) |
+| Debian, Ubuntu, Zorin, Mint | `.deb` |
+| Fedora, openSUSE | `.rpm` |
+| Qualquer distro | `.AppImage` (`chmod +x` e executar) |
+| Arch, CachyOS, Manjaro | `packaging/arch/PKGBUILD` (`makepkg -si`) |
+
+Depois de instalado ele inicia com o sistema (dá para desligar nas Configurações).
+
+> **Status no Linux:** o código é portável, mas a maior parte dos testes foi feita no Windows. Veja "Limitações".
+
+## Uso
+- **Ctrl+Espaço** abre e fecha (o atalho é configurável).
+- **Ctrl+1..4**: Aplicativos, Arquivos, Ações, Área de transferência.
+- **Ctrl+,**: Configurações. **Ctrl+K**: palavra-atalho para o item selecionado. **Espaço / Ctrl+Y**: prévia rápida.
+- **Enter** abre ou executa; **Ctrl+Enter** mostra o arquivo na pasta.
+- Exemplos: `timer 10 min`, `nota: comprar leite`, `reunião amanhã 14h`, `15% de 200`, `10 km em mi`, `100 usd em brl`.
+
+### Área de transferência
+Guarda texto, **imagens** (prints, imagens copiadas), **arquivos e vídeos** copiados (pelo caminho, com miniatura). Enter coloca o item de volta no formato original (arquivos voltam como arquivos, colam no Explorer). O histórico fica **só na memória**, com limite de itens e de tamanho; nada vai para o disco.
+
+## Configurações
+Em `Ctrl+,` ou no ícone da bandeja: atalho (com aviso se já estiver em uso por outro programa), iniciar com o sistema, tema, pastas extras e ignoradas, indexar todos os discos ou só as pastas pessoais, pausar a indexação na bateria. **Exportar** e **Importar** salvam/leem um `.json`; ao importar, você revisa e clica em Salvar. O arquivo de configuração fica em `%LOCALAPPDATA%\Glint\config.json` (Windows) ou `~/.local/share/Glint/config.json` (Linux).
+
+## Desempenho
+- Índice de nomes de arquivos em memória (cerca de 290 mil itens em ~0,3 s no teste do autor, com limite de itens).
+- A indexação roda em poucas threads de baixa prioridade (CPU e disco) e, na bateria, só indexa as pastas pessoais.
+- A busca roda em segundo plano; cada tecla cancela a anterior.
+
+## Limitações
+- O desfoque do vidro usa uma foto do fundo tirada ao abrir; ele não acompanha o que muda atrás da janela enquanto está aberto.
+- **Linux/Wayland:** o sistema não permite atalhos globais a aplicativos. Crie um atalho do sistema que execute `glint` (ele abre a janela). No X11 o atalho global funciona. O `Ctrl+Espaço` costuma estar ocupado pelo seletor de idioma (IBus/Fcitx): troque o atalho nas Configurações.
+- **Linux:** por enquanto não há captura do fundo (o painel usa um véu sólido em vez do desfoque real) e os ícones nativos dos aplicativos e as miniaturas ainda não foram validados.
+- Conversões de moeda precisam de internet.
+
+## Compilar
+Requisitos: Rust (estável), Node.js 20+; no Linux, as dependências do Tauri 2 (`libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`, `libxdo-dev`, `libgtk-3-dev`).
+
+```bash
+npm ci
+npx tauri build          # gera os instaladores em src-tauri/target/release/bundle
+npx tauri build --no-bundle   # só o executável
+```
+
+Variáveis para testes visuais: `GLINT_THEME=light|dark`, `GLINT_KEEP=1` (não esconde ao perder o foco), `GLINT_DUMP_BD=arquivo.jpg` (salva o fundo capturado).
+
+## Licença
+[MIT](LICENSE)

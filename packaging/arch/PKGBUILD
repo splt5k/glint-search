@@ -1,0 +1,36 @@
+# Maintainer: MaykoM
+# Compila a partir do código-fonte (NÃO testado ainda no Arch/CachyOS). Ajuste pkgver para a versão publicada.
+pkgname=glint-launcher
+_repo=glint-search
+pkgver=2.2.0
+pkgrel=1
+pkgdesc="Busca rápida de apps, arquivos e ações com visual de vidro translúcido (Windows/Linux)"
+arch=('x86_64')
+url="https://github.com/splt5k/glint-search"
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'xdotool')
+makedepends=('rust' 'cargo' 'nodejs' 'npm' 'pkgconf')
+source=("$_repo-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$_repo-$pkgver"
+  npm ci
+  npx tauri build --no-bundle
+}
+
+package() {
+  cd "$_repo-$pkgver"
+  install -Dm755 src-tauri/target/release/glint "$pkgdir/usr/bin/glint"
+  install -Dm644 src-tauri/icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/glint.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/glint.desktop" <<DESK
+[Desktop Entry]
+Name=Glint
+Comment=Busca rápida de apps, arquivos e ações
+Exec=glint
+Icon=glint
+Type=Application
+Categories=Utility;
+DESK
+}

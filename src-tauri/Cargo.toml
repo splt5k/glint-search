@@ -1,0 +1,43 @@
+[package]
+name = "glint"
+version = "2.2.0"
+description = "Glint: busca rápida para Windows e Linux"
+edition = "2021"
+
+[lib]
+name = "glint_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[dependencies]
+arboard = "3.7.0"
+chrono = "0.4.45"
+dirs = "7.0.0"
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
+opener = { version = "0.9.0", features = ["reveal"] }
+rayon = "1.12.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tauri = { version = "2.12.5", features = ["tray-icon", "image-png"] }
+tauri-plugin-global-shortcut = "2.4.1"
+tauri-plugin-notification = "2.8.0"
+tauri-plugin-single-instance = "2.5.5"
+tauri-plugin-dialog = "2"
+
+[target."cfg(windows)".dependencies]
+xcap = "0.9.8"
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_Shell", "Win32_System_Com", "Win32_UI_WindowsAndMessaging", "Win32_Storage_FileSystem", "Win32_System_Threading", "Win32_System_Power", "Win32_System_DataExchange", "Win32_System_Memory"] }
+winreg = "0.56.0"
+
+
+[target."cfg(target_os = \"linux\")".dependencies]
+libc = "0.2"
