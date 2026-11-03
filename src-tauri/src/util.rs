@@ -50,7 +50,16 @@ pub fn query_param(query: &str, key: &str) -> Option<String> {
 macro_rules! dlog {
     ($($a:tt)*) => {
         if std::env::var_os("GLINT_LOG").is_some() {
-            eprintln!($($a)*);
+            $crate::elog!($($a)*);
         }
     };
+}
+
+/// Escreve no stderr sem nunca derrubar o app (eprintln! entra em pânico se o terminal já foi fechado).
+#[macro_export]
+macro_rules! elog {
+    ($($a:tt)*) => {{
+        use std::io::Write;
+        let _ = writeln!(std::io::stderr(), $($a)*);
+    }};
 }

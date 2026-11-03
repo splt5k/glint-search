@@ -397,7 +397,7 @@ fn apply_hotkey(app: &AppHandle, new: &str, old: &str) -> Result<(), String> {
         if let Some(o) = os {
             let _ = gs.register(o);
         }
-        eprintln!("atalho {new}: {e}");
+        crate::elog!("atalho {new}: {e}");
         return Err(format!("{new} já está em uso por outro programa. Escolha outro atalho."));
     }
     Ok(())
@@ -563,6 +563,11 @@ fn handle_ico(app: &AppHandle, query: &str) -> tauri::http::Response<Vec<u8>> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Linux: fechar o terminal que abriu o Glint manda SIGHUP para ele; um programa de bandeja tem que ignorar isso.
+    #[cfg(target_os = "linux")]
+    unsafe {
+        libc::signal(libc::SIGHUP, libc::SIG_IGN);
+    }
     let state = Arc::new(AppState {
         index: RwLock::new(Arc::new(FileIndex::default())),
         apps: RwLock::new(apps::load_cached()),
@@ -622,7 +627,7 @@ pub fn run() {
             let hotkey = state.config.data.lock().unwrap().hotkey.clone();
             match apply_hotkey(&handle, &hotkey, "") {
                 Ok(()) => state.hotkey_ok.store(true, Ordering::SeqCst),
-                Err(e) => eprintln!("atalho: {e}"),
+                Err(e) => crate::elog!("atalho: {e}"),
             }
 
             clip::start_watcher(state.clip.clone());
@@ -640,7 +645,7 @@ pub fn run() {
                 let _ = std::fs::create_dir_all(store::data_dir());
                 let _ = std::fs::write(&marker, "1");
                 if let Err(e) = autostart::set(state.config.data.lock().unwrap().autostart) {
-                    eprintln!("autostart: {e}");
+                    crate::elog!("autostart: {e}");
                 }
             }
 
