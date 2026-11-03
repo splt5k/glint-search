@@ -1,6 +1,6 @@
 [package]
 name = "glint"
-version = "2.2.0"
+version = "2.2.1"
 description = "Glint: busca rápida para Windows e Linux"
 edition = "2021"
 

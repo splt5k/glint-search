@@ -4,6 +4,13 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::RwLock;
 
+/// Item que o usuário pediu para nunca aparecer nas sugestões.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Hidden {
+    pub id: String,
+    pub title: String,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default)]
 pub struct Config {
@@ -18,6 +25,7 @@ pub struct Config {
     /// Indexar todos os discos fixos (desligado: só as pastas pessoais e as extras).
     pub all_drives: bool,
     pub pause_on_battery: bool,
+    pub never_suggest: Vec<Hidden>,
 }
 
 impl Default for Config {
@@ -30,6 +38,7 @@ impl Default for Config {
             exclude: vec![],
             all_drives: true,
             pause_on_battery: true,
+            never_suggest: vec![],
         }
     }
 }

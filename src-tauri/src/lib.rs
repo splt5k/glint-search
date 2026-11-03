@@ -229,6 +229,37 @@ async fn run_action(app: AppHandle, state: St<'_>, id: String, args: Value) -> R
     actions::run(&app, &id, &args)
 }
 
+/// Pede para um item nunca aparecer nas sugestões (e zera o uso dele).
+#[tauri::command]
+async fn suggest_hide(state: St<'_>, id: String, title: String) -> Result<(), String> {
+    {
+        let mut c = state.config.data.lock().unwrap();
+        if !c.never_suggest.iter().any(|h| h.id == id) {
+            c.never_suggest.push(config::Hidden { id: id.clone(), title });
+        }
+    }
+    state.config.save();
+    state.usage.data.lock().unwrap().remove(&id);
+    state.usage.save();
+    Ok(())
+}
+
+/// Tira um item das sugestões (e do reforço no ranking); `None` limpa todo o histórico de uso.
+#[tauri::command]
+async fn usage_forget(state: St<'_>, id: Option<String>) -> Result<(), String> {
+    {
+        let mut u = state.usage.data.lock().unwrap();
+        match id {
+            Some(id) => {
+                u.remove(&id);
+            }
+            None => u.clear(),
+        }
+    }
+    state.usage.save();
+    Ok(())
+}
+
 #[tauri::command]
 async fn usage_get(state: St<'_>) -> Result<HashMap<String, u32>, String> {
     Ok(state.usage.data.lock().unwrap().clone())
@@ -500,7 +531,7 @@ pub fn run() {
         .manage(state.clone())
         .invoke_handler(tauri::generate_handler![
             search, list_apps, recent, open_item, reveal, file_info, clip_list, clip_copy, clip_delete,
-            clip_clear, copy_text, run_action, usage_get, quick_get, quick_set, quick_remove, hide_window,
+            clip_clear, copy_text, run_action, usage_get, usage_forget, suggest_hide, quick_get, quick_set, quick_remove, hide_window,
             resize_window, reindex_now, config_get, config_set, config_export, config_import
         ])
         .on_window_event(|win, event| {

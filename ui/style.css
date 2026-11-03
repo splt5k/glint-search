@@ -247,3 +247,8 @@ html[data-theme='dark'] .row .t, html[data-theme='dark'] .cell .lab, html[data-t
 .set-warn { padding: 8px 12px; border-radius: 10px; background: color-mix(in srgb, #ff9f0a 22%, transparent); font-size: 12.5px; line-height: 1.45; }
 .set-msg { min-height: 16px; font-size: 12.5px; color: var(--fg2); }
 .set-msg.bad { color: #ff6961; }
+
+.set-hidden { display: flex; flex-wrap: wrap; gap: 6px; }
+.set-hidden .chip { height: 26px; display: inline-flex; align-items: center; gap: 6px; cursor: default; }
+.set-hidden .chip button { color: var(--fg2); font-size: 11px; }
+.set-hidden .chip button:hover { color: var(--fg); }

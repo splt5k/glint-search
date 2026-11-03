@@ -74,6 +74,7 @@ let sel = 0;
 let cols = 1;
 let seq = 0;
 let usage = {};
+let neverSuggest = new Set(); // ids que o usuário pediu para nunca sugerir
 let quick = {}; // palavra → item
 let form = null;
 let confirmId = null;
@@ -274,9 +275,10 @@ async function compute() {
   if (filter === 'apps') {
     if (!q) {
       const apps = (await invoke('list_apps')).map((h) => mapHit(h));
-      const used = apps.filter((a) => (usage[a.id] || 0) > 0).slice(0, 12);
+      // os mais abertos primeiro (não ordem alfabética); Delete remove um item das sugestões
+      const used = apps.filter((a) => (usage[a.id] || 0) > 0 && !neverSuggest.has(a.id)).sort((a, b) => usage[b.id] - usage[a.id]).slice(0, 6);
       const sections = [];
-      if (used.length) sections.push({ title: 'Sugestões', items: used });
+      if (used.length) sections.push({ title: 'Sugestões', hint: '<kbd>Del</kbd> nunca sugerir', items: used });
       sections.push({ title: 'Aplicativos', items: apps });
       return { head: { icon: 'apps', title: 'Aplicativos' }, sections, layout: 'grid', cols: 6, empty: 'Nenhum aplicativo' };
     }
@@ -354,7 +356,7 @@ function render(res) {
 
   let html = '';
   for (const s of res.sections) {
-    if (s.title && !(res.sections.length === 1 && res.head && res.head.title === s.title)) html += `<div class="sec"><span>${esc(s.title)}</span></div>`;
+    if (s.title && !(res.sections.length === 1 && res.head && res.head.title === s.title)) html += `<div class="sec"><span>${esc(s.title)}</span>${s.hint ? `<span class="more">${s.hint}</span>` : ''}</div>`;
     if (res.layout === 'grid') {
       html += `<div class="grid ${res.gridClass || ''}" style="grid-template-columns:repeat(${res.cols},1fr)">`;
       for (const it of s.items) { html += cellHtml(it, items.length); items.push(it); }
@@ -591,8 +593,10 @@ function renderSettings(meta) {
       <select id="cfTheme"><option value="system">Seguir o sistema</option><option value="light">Claro</option><option value="dark">Escuro</option></select></div>
     <div class="set-block"><div class="set-lbl">Pastas extras para indexar <small>(uma por linha)</small></div><textarea id="cfInc" rows="2" spellcheck="false">${esc(cfg.include.join('\n'))}</textarea></div>
     <div class="set-block"><div class="set-lbl">Pastas ignoradas <small>(uma por linha)</small></div><textarea id="cfExc" rows="2" spellcheck="false">${esc(cfg.exclude.join('\n'))}</textarea></div>
+    <div class="set-block"><div class="set-lbl">Nunca sugerir <small>(itens ocultos das Sugestões; use Delete numa sugestão)</small></div>
+      <div class="set-hidden">${cfg.never_suggest.length ? cfg.never_suggest.map((h) => `<span class="chip">${esc(h.title)} <button data-unhide="${esc(h.id)}" title="Voltar a sugerir">✕</button></span>`).join('') : '<small>Nenhum.</small>'}</div></div>
     <div class="set-actions">
-      <button class="pbtn" id="cfExport">Exportar…</button><button class="pbtn" id="cfImport">Importar…</button><button class="pbtn" id="cfReindex">Reindexar agora</button>
+      <button class="pbtn" id="cfExport">Exportar…</button><button class="pbtn" id="cfImport">Importar…</button><button class="pbtn" id="cfReindex">Reindexar agora</button><button class="pbtn" id="cfForget" title="Zera as sugestões e o aprendizado de uso">Limpar sugestões</button>
       <span class="spacer"></span><button class="pbtn pri" id="cfSave">Salvar</button>
     </div>
     <div class="set-msg" id="cfMsg"></div>
@@ -621,7 +625,7 @@ function wireSettings(meta) {
   });
   $('cfHkReset').addEventListener('click', () => { cfg.hotkey = 'Ctrl+Space'; hk.value = prettyKey(cfg.hotkey); });
   $('cfSave').addEventListener('click', async () => {
-    try { const m = await invoke('config_set', { config: collectSettings() }); cfg = m.config; applyThemePref(); setMsg('Salvo.'); }
+    try { const m = await invoke('config_set', { config: collectSettings() }); cfg = m.config; neverSuggest = new Set(cfg.never_suggest.map((h) => h.id)); applyThemePref(); setMsg('Salvo.'); }
     catch (e) { setMsg(String(e), true); }
   });
   $('cfExport').addEventListener('click', async () => {
@@ -633,6 +637,8 @@ function wireSettings(meta) {
       if (c) { cfg = c; renderSettings({ ...meta, hotkeyOk: true, wayland: meta.wayland }); setMsg('Importado. Revise e clique em Salvar para aplicar.'); }
     } catch (e) { setMsg(String(e), true); }
   });
+  pbody.querySelectorAll('[data-unhide]').forEach((b) => b.addEventListener('click', () => { cfg.never_suggest = cfg.never_suggest.filter((h) => h.id !== b.dataset.unhide); b.closest('.chip').remove(); setMsg('Clique em Salvar para aplicar.'); }));
+  $('cfForget').addEventListener('click', async () => { await invoke('usage_forget', { id: null }); usage = {}; setMsg('Sugestões e histórico de uso limpos.'); });
   $('cfReindex').addEventListener('click', async () => { await invoke('reindex_now'); setMsg('Reindexando em segundo plano…'); });
   pbody.querySelectorAll('input,textarea,select').forEach((el) => el.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); }));
 }
@@ -707,6 +713,7 @@ document.addEventListener('keydown', async (e) => {
   else if (e.key === 'ArrowLeft' && (grid || !input.value)) { e.preventDefault(); setSel(sel - 1); }
   else if (e.key === 'Tab') { e.preventDefault(); setSel(e.shiftKey ? sel - 1 : sel + 1); }
   else if (e.key === 'Enter') { e.preventDefault(); activate(items[sel], ctrl); }
+  else if (e.key === 'Delete' && filter === 'apps' && !input.value && usage[items[sel]?.id] > 0) { e.preventDefault(); const it = items[sel]; await invoke('suggest_hide', { id: it.id, title: it.title }); neverSuggest.add(it.id); delete usage[it.id]; toast(`${it.title} nunca mais aparece nas sugestões (reative em Configurações)`); refresh(); }
   else if (e.key === 'Delete' && filter === 'clip' && items[sel]) { e.preventDefault(); await invoke('clip_delete', { id: items[sel].clipId }); refresh(); }
 });
 
@@ -730,7 +737,9 @@ async function onShown(p) {
   const app = $('app');
   app.classList.remove('in'); void app.offsetWidth; app.classList.add('in');
   input.focus();
-  [usage, quick] = await Promise.all([invoke('usage_get'), invoke('quick_get')]);
+  let meta;
+  [usage, quick, meta] = await Promise.all([invoke('usage_get'), invoke('quick_get'), invoke('config_get')]);
+  neverSuggest = new Set(meta.config.never_suggest.map((h) => h.id));
   warmRates();
 }
 function onHidden() { $('app').classList.remove('in'); }
