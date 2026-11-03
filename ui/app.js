@@ -75,6 +75,7 @@ let cols = 1;
 let seq = 0;
 let usage = {};
 let neverSuggest = new Set(); // ids que o usuário pediu para nunca sugerir
+let pinnedIds = new Set(); // ids fixados no topo das sugestões
 let quick = {}; // palavra → item
 let form = null;
 let confirmId = null;
@@ -178,7 +179,8 @@ function mapHit(h, opts = {}) {
 function actionItem(def, score = 500) {
   return { id: 'action:' + def.id, kind: 'action', actionId: def.id, def, title: def.title, sub: def.sub, tile: def.icon, color: def.color, score, danger: !!def.confirm };
 }
-function boost(it) { return (it.score || 0) + Math.min(usage[it.id] || 0, 10) * 30; }
+// aplicativos ganham de pastas/arquivos de nome parecido: num lançador, digitar um nome costuma ser para abrir o programa
+function boost(it) { return (it.score || 0) + Math.min(usage[it.id] || 0, 10) * 30 + (it.kind === 'app' ? 250 : 0); }
 
 function localHits(q, onlyActions = false) {
   const out = [];
@@ -232,7 +234,10 @@ function webItem(q) {
 function groupOf(it) { return GROUP[it.kind] || 'Outros'; }
 
 function sectionize(list, { withTop = true } = {}) {
-  const sorted = [...list].sort((a, b) => boost(b) - boost(a));
+  // mesmo item vindo de duas fontes (ex.: atalho rápido + busca) aparece uma vez só
+  const best = new Map();
+  for (const it of list) if (!best.has(it.id) || boost(it) > boost(best.get(it.id))) best.set(it.id, it);
+  const sorted = [...best.values()].sort((a, b) => boost(b) - boost(a));
   const sections = [];
   if (withTop && sorted.length && boost(sorted[0]) >= 750 && !['calc', 'conv', 'web'].includes(sorted[0].kind)) {
     sections.push({ title: 'Melhor resultado', items: [sorted.shift()], top: true });
@@ -276,9 +281,11 @@ async function compute() {
     if (!q) {
       const apps = (await invoke('list_apps')).map((h) => mapHit(h));
       // os mais abertos primeiro (não ordem alfabética); Delete remove um item das sugestões
-      const used = apps.filter((a) => (usage[a.id] || 0) > 0 && !neverSuggest.has(a.id)).sort((a, b) => usage[b.id] - usage[a.id]).slice(0, 6);
+      const pinned = apps.filter((a) => pinnedIds.has(a.id)).map((a) => ({ ...a, pinned: true }));
+      const top = apps.filter((a) => (usage[a.id] || 0) > 0 && !neverSuggest.has(a.id) && !pinnedIds.has(a.id)).sort((a, b) => usage[b.id] - usage[a.id]);
+      const used = [...pinned, ...top].slice(0, Math.max(6, pinned.length));
       const sections = [];
-      if (used.length) sections.push({ title: 'Sugestões', hint: '<kbd>Del</kbd> nunca sugerir', items: used });
+      if (used.length) sections.push({ title: 'Sugestões', hint: 'botão direito: fixar · <kbd>Del</kbd> nunca sugerir', items: used });
       sections.push({ title: 'Aplicativos', items: apps });
       return { head: { icon: 'apps', title: 'Aplicativos' }, sections, layout: 'grid', cols: 6, empty: 'Nenhum aplicativo' };
     }
@@ -343,7 +350,7 @@ function rowHtml(it, i, top) {
   return `<div class="row ${top ? 'top' : ''} ${it.danger ? 'danger' : ''}" data-i="${i}">${iconOf(it, top)}<div class="txt"><div class="t ${it.kind === 'calc' || it.kind === 'conv' ? 'big' : ''}">${esc(it.title)}</div><div class="s">${isConfirm ? '<b>Pressione Enter novamente para confirmar</b>' : esc(it.sub || '')}</div></div><div class="r">${right}</div></div>`;
 }
 function cellHtml(it, i) {
-  return `<div class="cell" data-i="${i}" title="${esc(it.title)}">${iconOf(it)}<div class="lab">${esc(it.title.replace(/\.[^.]{1,5}$/, it.kind === 'file' ? '' : '$&'))}</div></div>`;
+  return `<div class="cell${it.pinned ? ' pinned' : ''}" data-i="${i}" title="${esc(it.title)}">${iconOf(it)}<div class="lab">${esc(it.title.replace(/\.[^.]{1,5}$/, it.kind === 'file' ? '' : '$&'))}</div></div>`;
 }
 
 function render(res) {
@@ -656,6 +663,87 @@ function closeSettings() {
   refresh();
 }
 
+
+// ───────────────────────── menu do botão direito ─────────────────────────
+const ctxEl = document.createElement('div');
+ctxEl.id = 'ctx';
+ctxEl.hidden = true;
+document.body.appendChild(ctxEl);
+let ctxActions = [];
+const isWindows = IS_WIN;
+
+function hideCtx() { ctxEl.hidden = true; ctxActions = []; }
+
+function ctxEntries(it) {
+  const E = [];
+  const open = ['Abrir', () => activate(it)];
+  if (it.kind === 'app') {
+    const pinned = pinnedIds.has(it.id);
+    E.push(open, null,
+      [pinned ? 'Desafixar das sugestões' : 'Fixar nas sugestões', async () => {
+        await invoke('suggest_pin', { id: it.id, title: it.title, pin: !pinned });
+        if (pinned) pinnedIds.delete(it.id); else { pinnedIds.add(it.id); neverSuggest.delete(it.id); }
+        toast(pinned ? 'Removido dos fixados' : `${it.title} fixado nas sugestões`);
+        refresh();
+      }],
+      ['Nunca sugerir', async () => {
+        await invoke('suggest_hide', { id: it.id, title: it.title });
+        neverSuggest.add(it.id); pinnedIds.delete(it.id); delete usage[it.id];
+        toast(`${it.title} nunca mais aparece nas sugestões`); refresh();
+      }],
+      null,
+      ['Abrir local do arquivo', async () => { try { await invoke('app_reveal', { id: it.path }); hide(); } catch (e) { toast(String(e)); } }]);
+    if (isWindows) E.push(['Desinstalar…', async () => { try { toast(await invoke('app_uninstall', { name: it.title })); } catch (e) { toast(String(e)); } }]);
+  } else if (it.kind === 'file' || it.kind === 'folder') {
+    E.push(open, ['Mostrar na pasta', async () => { await invoke('reveal', { path: it.path }); hide(); }], null,
+      ['Copiar caminho', async () => { await invoke('copy_text', { text: it.path }); toast('Caminho copiado'); }]);
+  } else if (it.kind === 'clip') {
+    E.push(['Copiar', () => activate(it)], ['Apagar', async () => { await invoke('clip_delete', { id: it.clipId }); refresh(); }]);
+  } else {
+    E.push(open);
+  }
+  return E;
+}
+
+function openCtx(it, x, y) {
+  const entries = ctxEntries(it);
+  ctxActions = entries.filter(Boolean).map((e) => e[1]);
+  let n = 0;
+  ctxEl.innerHTML = entries.map((e) => (e ? `<button data-n="${n++}">${esc(e[0])}</button>` : '<hr>')).join('');
+  ctxEl.hidden = false;
+  const r = ctxEl.getBoundingClientRect();
+  ctxEl.style.left = Math.max(4, Math.min(x, window.innerWidth - r.width - 4)) + 'px';
+  ctxEl.style.top = Math.max(4, Math.min(y, window.innerHeight - r.height - 4)) + 'px';
+  ctxEl.querySelector('button')?.focus();
+}
+
+// nenhum menu do navegador ("Salvar imagem como...") em lugar nenhum, exceto nos campos de texto
+document.addEventListener('contextmenu', (e) => {
+  if (e.target.closest('input,textarea')) return;
+  e.preventDefault();
+  const el = e.target.closest('[data-i]');
+  const it = el && items[+el.dataset.i];
+  if (!it) return hideCtx();
+  setSel(+el.dataset.i, false);
+  openCtx(it, e.clientX, e.clientY);
+});
+ctxEl.addEventListener('click', async (e) => {
+  const b = e.target.closest('button[data-n]');
+  if (!b) return;
+  const run = ctxActions[+b.dataset.n];
+  hideCtx();
+  await run?.();
+});
+ctxEl.addEventListener('keydown', (e) => {
+  const btns = [...ctxEl.querySelectorAll('button')];
+  const i = btns.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown') { e.preventDefault(); btns[(i + 1) % btns.length].focus(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); btns[(i - 1 + btns.length) % btns.length].focus(); }
+  e.stopPropagation();
+  if (e.key === 'Escape') { hideCtx(); input.focus(); }
+});
+document.addEventListener('mousedown', (e) => { if (!ctxEl.hidden && !e.target.closest('#ctx')) hideCtx(); });
+
 // ───────────────────────── filtros / teclado ─────────────────────────
 function setFilter(f) {
   filter = filter === f ? null : f;
@@ -687,6 +775,7 @@ document.addEventListener('keydown', async (e) => {
     e.preventDefault();
     if (!ql.hidden) return closePreview();
     if (!qkbar.hidden) return closeQuickKey();
+    if (!ctxEl.hidden) { hideCtx(); return input.focus(); }
     if (settingsOpen) return closeSettings();
     if (form) return exitForm();
     if (confirmId) { confirmId = null; return refreshRows(); }
@@ -698,6 +787,12 @@ document.addEventListener('keydown', async (e) => {
     return hide();
   }
   if (form || settingsOpen || !qkbar.hidden) return;
+  if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+    e.preventDefault();
+    const el = pbody.querySelector('.sel');
+    if (el && items[sel]) { const r = el.getBoundingClientRect(); openCtx(items[sel], r.left + 24, r.bottom - 8); }
+    return;
+  }
   if (ctrl && e.key === ',') { e.preventDefault(); return openSettings(); }
 
   if (ctrl && /^[1-4]$/.test(e.key)) { e.preventDefault(); return setFilter(['apps', 'files', 'actions', 'clip'][+e.key - 1]); }
@@ -740,6 +835,7 @@ async function onShown(p) {
   let meta;
   [usage, quick, meta] = await Promise.all([invoke('usage_get'), invoke('quick_get'), invoke('config_get')]);
   neverSuggest = new Set(meta.config.never_suggest.map((h) => h.id));
+  pinnedIds = new Set(meta.config.pinned.map((h) => h.id));
   warmRates();
 }
 function onHidden() { $('app').classList.remove('in'); }

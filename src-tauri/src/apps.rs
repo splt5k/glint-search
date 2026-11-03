@@ -127,6 +127,65 @@ pub fn launch(app_id: &str, exec: &str) {
     }
 }
 
+/// Windows: resolve o ID do app (caminho, "{GUID}\caminho" de pasta conhecida ou app da Loja) para um local no disco.
+#[cfg(windows)]
+pub fn locate(id: &str) -> Option<PathBuf> {
+    use std::os::windows::process::CommandExt;
+    let known: &[(&str, &str)] = &[
+        ("{6D809377-6AF0-444B-8957-A3773F02200E}", "ProgramFiles"),
+        ("{7C5A40EF-A0FB-4BFC-874A-C0F2E0B9FA8E}", "ProgramFiles(x86)"),
+        ("{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}", "SystemRoot\\System32"),
+        ("{F38BF404-1D43-42F2-9305-67DE0B28FC23}", "SystemRoot"),
+    ];
+    for (guid, var) in known {
+        if let Some(rest) = id.strip_prefix(guid) {
+            let mut it = var.splitn(2, '\\');
+            let base = std::env::var(it.next()?).ok()?;
+            let mut p = PathBuf::from(base);
+            if let Some(sub) = it.next() {
+                p.push(sub);
+            }
+            p.push(rest.trim_start_matches('\\'));
+            return p.exists().then_some(p);
+        }
+    }
+    let direct = PathBuf::from(id);
+    if direct.is_absolute() && direct.exists() {
+        return Some(direct);
+    }
+    // app da Loja: "FamiliaDoPacote!App" -> pasta de instalação do pacote
+    let family = id.split('!').next()?;
+    if family.is_empty() || !family.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-') {
+        return None;
+    }
+    let out = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &format!("(Get-AppxPackage -PackageFamilyName '{family}' | Select-Object -First 1).InstallLocation")])
+        .creation_flags(0x0800_0000)
+        .output()
+        .ok()?;
+    let p = PathBuf::from(String::from_utf8_lossy(&out.stdout).trim());
+    (p.as_os_str().len() > 0 && p.exists()).then_some(p)
+}
+
+/// Linux: o ID é o .desktop; tenta o executável do `Exec=` e cai para o próprio .desktop.
+#[cfg(not(windows))]
+pub fn locate(id: &str) -> Option<PathBuf> {
+    let desktop = PathBuf::from(id);
+    let exec = std::fs::read_to_string(&desktop).ok().and_then(|t| {
+        t.lines().find_map(|l| l.strip_prefix("Exec=").map(|v| v.split_whitespace().next().unwrap_or("").to_string()))
+    });
+    if let Some(cmd) = exec.filter(|c| !c.is_empty()) {
+        let direct = PathBuf::from(&cmd);
+        if direct.is_absolute() && direct.exists() {
+            return Some(direct);
+        }
+        if let Some(found) = std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).map(|d| d.join(&cmd)).find(|p| p.exists())) {
+            return Some(found);
+        }
+    }
+    desktop.exists().then_some(desktop)
+}
+
 pub fn to_hit(a: &AppEntry, score: i32) -> Hit {
     Hit {
         id: format!("app:{}", a.id),
@@ -141,6 +200,8 @@ pub fn to_hit(a: &AppEntry, score: i32) -> Hit {
 
 pub fn search(apps: &[AppEntry], query: &str) -> Vec<Hit> {
     let q = query.trim().to_lowercase();
+    // quem digita "winbox.exe" quer o programa: a extensão não faz parte do nome do aplicativo
+    let q = q.strip_suffix(".exe").unwrap_or(&q).to_string();
     let mut v: Vec<Hit> = apps
         .iter()
         .filter_map(|a| {

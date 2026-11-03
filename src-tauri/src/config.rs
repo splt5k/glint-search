@@ -26,6 +26,8 @@ pub struct Config {
     pub all_drives: bool,
     pub pause_on_battery: bool,
     pub never_suggest: Vec<Hidden>,
+    /// Itens fixados no topo das sugestões.
+    pub pinned: Vec<Hidden>,
 }
 
 impl Default for Config {
@@ -39,6 +41,7 @@ impl Default for Config {
             all_drives: true,
             pause_on_battery: true,
             never_suggest: vec![],
+            pinned: vec![],
         }
     }
 }

@@ -252,3 +252,15 @@ html[data-theme='dark'] .row .t, html[data-theme='dark'] .cell .lab, html[data-t
 .set-hidden .chip { height: 26px; display: inline-flex; align-items: center; gap: 6px; cursor: default; }
 .set-hidden .chip button { color: var(--fg2); font-size: 11px; }
 .set-hidden .chip button:hover { color: var(--fg); }
+
+/* ───────── menu do botão direito ───────── */
+#ctx {
+  position: fixed; z-index: 50; min-width: 210px; padding: 6px; border-radius: 14px;
+  background: var(--tint-solid); border: 1px solid var(--hair); box-shadow: var(--shadow);
+  display: flex; flex-direction: column;
+}
+#ctx[hidden] { display: none; }
+#ctx button { text-align: left; padding: 7px 12px; border-radius: 8px; font-size: 13.5px; color: var(--fg); }
+#ctx button:hover, #ctx button:focus { background: var(--sel); outline: 0; }
+#ctx hr { border: 0; height: 1px; background: var(--hair); margin: 5px 6px; }
+.cell.pinned::after { content: ''; position: absolute; top: 8px; right: 10px; width: 6px; height: 6px; border-radius: 50%; background: var(--fg2); }

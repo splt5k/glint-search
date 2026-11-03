@@ -219,6 +219,10 @@ impl FileIndex {
         if q.chars().count() < 2 {
             return vec![];
         }
+        // "maio .docx" = o nome precisa conter TODAS as palavras (em qualquer ordem); ".docx" também vale como extensão.
+        let toks: Vec<&str> = q.split_whitespace().collect();
+        let main = toks.iter().filter(|t| !t.starts_with('.')).max_by_key(|t| t.chars().count()).copied().unwrap_or(q.as_str());
+        let ext = toks.iter().find(|t| t.starts_with('.') && t.len() > 1).copied();
 
         let now = std::time::SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -233,8 +237,11 @@ impl FileIndex {
                 let mut out = Vec::new();
                 for (i, e) in chunk.iter().enumerate() {
                     let ln = self.lname(e);
-                    if ln.contains(&q) {
-                        let mut s = fuzzy::score_lower(&q, ln);
+                    if toks.iter().all(|t| ln.contains(t)) {
+                        let mut s = fuzzy::score_lower(main, ln).max(100);
+                        if ext.map(|x| ln.ends_with(x)).unwrap_or(false) {
+                            s += 30;
+                        }
                         if self.personal[e.dir as usize] {
                             s += 40;
                         }

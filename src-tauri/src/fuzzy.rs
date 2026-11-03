@@ -48,16 +48,22 @@ pub fn score_lower(q: &str, t: &str) -> i32 {
     let mut qi = 0usize;
     let mut consecutive = 0;
     let mut matched = 0;
+    let mut best_run = 0;
     for c in t.chars() {
         if qi < qc.len() && qc[qi] == c {
             matched += 10 + consecutive * 15;
             consecutive += 1;
+            best_run = best_run.max(consecutive);
             qi += 1;
         } else {
             consecutive = 0;
         }
     }
     if qi == qc.len() {
+        // letras muito espalhadas ("winbox" em "Windows Sandbox") não contam como resultado
+        if qlen >= 4 && best_run * 3 < qlen * 2 {
+            return 0;
+        }
         let penalty = (tlen - qlen) * 2;
         return (400 + matched - penalty).max(100);
     }

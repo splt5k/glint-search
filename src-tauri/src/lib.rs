@@ -229,11 +229,50 @@ async fn run_action(app: AppHandle, state: St<'_>, id: String, args: Value) -> R
     actions::run(&app, &id, &args)
 }
 
+/// Fixa (ou desafixa) um item no topo das sugestões.
+#[tauri::command]
+async fn suggest_pin(state: St<'_>, id: String, title: String, pin: bool) -> Result<(), String> {
+    {
+        let mut c = state.config.data.lock().unwrap();
+        c.pinned.retain(|h| h.id != id);
+        if pin {
+            c.never_suggest.retain(|h| h.id != id);
+            c.pinned.push(config::Hidden { id, title });
+        }
+    }
+    state.config.save();
+    Ok(())
+}
+
+/// Abre a pasta onde o aplicativo está instalado (seleciona o executável quando dá).
+#[tauri::command]
+async fn app_reveal(id: String) -> Result<(), String> {
+    let path = apps::locate(&id).ok_or("Não achei o local deste aplicativo (apps da Loja não têm uma pasta acessível).")?;
+    opener::reveal(path).map_err(|e| e.to_string())
+}
+
+/// Desinstalar com segurança: abre "Aplicativos instalados" e deixa o nome na área de transferência.
+#[tauri::command]
+async fn app_uninstall(state: St<'_>, name: String) -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        state.clip.set_text(&name);
+        opener::open("ms-settings:appsfeatures").map_err(|e| e.to_string())?;
+        Ok(format!("Nome copiado: cole \"{name}\" na busca de Aplicativos instalados."))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (&state, &name);
+        Err("Desinstalar ainda não é suportado no Linux: use o gerenciador de pacotes da sua distro.".into())
+    }
+}
+
 /// Pede para um item nunca aparecer nas sugestões (e zera o uso dele).
 #[tauri::command]
 async fn suggest_hide(state: St<'_>, id: String, title: String) -> Result<(), String> {
     {
         let mut c = state.config.data.lock().unwrap();
+        c.pinned.retain(|h| h.id != id);
         if !c.never_suggest.iter().any(|h| h.id == id) {
             c.never_suggest.push(config::Hidden { id: id.clone(), title });
         }
@@ -531,7 +570,7 @@ pub fn run() {
         .manage(state.clone())
         .invoke_handler(tauri::generate_handler![
             search, list_apps, recent, open_item, reveal, file_info, clip_list, clip_copy, clip_delete,
-            clip_clear, copy_text, run_action, usage_get, usage_forget, suggest_hide, quick_get, quick_set, quick_remove, hide_window,
+            clip_clear, copy_text, run_action, usage_get, usage_forget, suggest_hide, suggest_pin, app_reveal, app_uninstall, quick_get, quick_set, quick_remove, hide_window,
             resize_window, reindex_now, config_get, config_set, config_export, config_import
         ])
         .on_window_event(|win, event| {
