@@ -66,7 +66,7 @@ pub fn show(app: &AppHandle) {
     let t = theme::current();
     let r1 = w.show();
     let r2 = w.set_focus();
-    eprintln!("show: {:?} focus: {:?} visible: {:?} pos: {:?} size: {:?}", r1, r2, w.is_visible(), w.outer_position(), w.outer_size());
+    crate::dlog!("show: {:?} focus: {:?} visible: {:?} pos: {:?} size: {:?}", r1, r2, w.is_visible(), w.outer_position(), w.outer_size());
     let _ = app.emit(
         "shown",
         json!({ "dark": t.dark, "accent": t.accent, "bd": if bd_ok { seq } else { 0 }, "w": WIN_W, "h": WIN_MAX_H }),

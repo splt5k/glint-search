@@ -71,7 +71,7 @@ npx tauri build          # gera os instaladores em src-tauri/target/release/bund
 npx tauri build --no-bundle   # só o executável
 ```
 
-Variáveis para testes visuais: `GLINT_THEME=light|dark`, `GLINT_KEEP=1` (não esconde ao perder o foco), `GLINT_DUMP_BD=arquivo.jpg` (salva o fundo capturado).
+Variáveis para testes visuais: `GLINT_THEME=light|dark`, `GLINT_KEEP=1` (não esconde ao perder o foco), `GLINT_DUMP_BD=arquivo.jpg` (salva o fundo capturado), `GLINT_LOG=1` (mostra mensagens de depuração no terminal).
 
 ## Licença
 [MIT](LICENSE)

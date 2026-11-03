@@ -44,3 +44,13 @@ pub fn query_param(query: &str, key: &str) -> Option<String> {
         (k == key).then(|| url_decode(v))
     })
 }
+
+/// Texto de depuração: só aparece quando GLINT_LOG está definida.
+#[macro_export]
+macro_rules! dlog {
+    ($($a:tt)*) => {
+        if std::env::var_os("GLINT_LOG").is_some() {
+            eprintln!($($a)*);
+        }
+    };
+}

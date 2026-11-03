@@ -88,7 +88,7 @@ fn reindex(state: Arc<AppState>) {
             let mut roots = index::drive_roots();
             roots.extend(cfg.include_paths());
             let phase2 = pool.install(|| FileIndex::build(&roots, true, &personal, &exclude));
-            eprintln!("índice: {} itens em {:?}", phase2.len(), t.elapsed());
+            crate::dlog!("índice: {} itens em {:?}", phase2.len(), t.elapsed());
             *state.index.write().unwrap() = Arc::new(phase2);
         }
 
