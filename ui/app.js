@@ -2,6 +2,7 @@ import { calculate } from './lib/calc.js';
 import { convert, warmRates } from './lib/units.js';
 import { parseWhen, parseDuration, toIcs, describe } from './lib/when.js';
 import { attachLens, PAD } from './lib/lens.js';
+import { SERVICES } from './lib/services.js';
 
 const T = window.__TAURI__;
 const invoke = (c, a) => T.core.invoke(c, a);
@@ -63,7 +64,7 @@ const ACTIONS = [
 ];
 const A_BY_ID = Object.fromEntries(ACTIONS.map((a) => [a.id, a]));
 
-const GROUP = { cmd: 'Ações', app: 'Aplicativos', folder: 'Pastas', file: 'Documentos e arquivos', setting: 'Configurações', action: 'Ações', nlp: 'Ações', calc: 'Calculadora', conv: 'Conversão', web: 'Pesquisar na web', clip: 'Área de transferência' };
+const GROUP = { service: 'Sites', cmd: 'Ações', app: 'Aplicativos', folder: 'Pastas', file: 'Documentos e arquivos', setting: 'Configurações', action: 'Ações', nlp: 'Ações', calc: 'Calculadora', conv: 'Conversão', web: 'Pesquisar na web', clip: 'Área de transferência' };
 const FILE_CHIPS = [['Todos', 'all'], ['Imagens', 'images'], ['Documentos', 'docs'], ['PDFs', 'pdf'], ['Mídia', 'media'], ['Pastas', 'folders']];
 
 // ───────────────────────── estado ─────────────────────────
@@ -76,6 +77,7 @@ let seq = 0;
 let usage = {};
 let neverSuggest = new Set(); // ids que o usuário pediu para nunca sugerir
 let pinnedIds = new Set(); // ids fixados no topo das sugestões
+let webIcons = true; // favicons dos sites conhecidos
 let quick = {}; // palavra → item
 let form = null;
 let confirmId = null;
@@ -154,7 +156,8 @@ function iconOf(it, big) {
   if (it.tile) return tile(it.tile, it.color);
   const size = big ? 128 : 96;
   let src;
-  if (it.kind === 'app') src = `${ICO}?a=${enc(it.path)}&s=${size}`;
+  if (it.iconUrl) src = it.iconUrl;
+  else if (it.kind === 'app') src = `${ICO}?a=${enc(it.path)}&s=${size}`;
   else src = `${ICO}?p=${enc(it.path)}&s=${size}&t=${it.thumb ? 1 : 0}`;
   const letter = esc((it.title || '?').trim()[0]?.toUpperCase() || '?');
   const photo = it.thumb && PHOTO_RE.test(it.path || '') ? ' photo' : '';
@@ -181,13 +184,13 @@ function actionItem(def, score = 500) {
 }
 // aplicativos ganham de pastas/arquivos de nome parecido: num lançador, digitar um nome costuma ser para abrir o programa
 // ordem por tipo quando o texto casa de forma parecida: aplicativo, ação, pasta, arquivo (nome idêntico continua forte)
-const TIER = { app: 250, action: 220, folder: 60 };
+const TIER = { app: 250, action: 220, service: 230, folder: 60 };
 function boost(it) { return (it.score || 0) + Math.min(usage[it.id] || 0, 10) * 30 + (TIER[it.kind] || 0); }
 
 function localHits(q, onlyActions = false) {
   const out = [];
   let m;
-  if (!onlyActions) out.push(...commandItems(q));
+  if (!onlyActions) out.push(...commandItems(q), ...serviceItems(q));
   if (!onlyActions) {
     const c = calculate(q);
     if (c) out.push({ id: 'calc', kind: 'calc', title: c, sub: `${q} =`, copy: c, tile: 'calc', color: '#ff9f0a', score: 1500 });
@@ -299,6 +302,17 @@ function commandItems(q) {
     const isUrl = /^https?:\/\/\S+$/i.test(rest) || /^[\w-]+(\.[\w-]+)+(:\d+)?(\/\S*)?$/.test(rest);
     const url = isUrl ? (/^https?:\/\//i.test(rest) ? rest : 'https://' + rest) : `https://www.google.com/search?q=${enc(rest)}`;
     out.push(cmdItem(`browser:${b}:${rest}`, { kind: 'browser', browser: b, url }, isUrl ? `Abrir ${rest} no ${name}` : `Pesquisar "${rest}" no ${name}`, `Abre o ${name} direto`, 'globe', '#0a84ff', 1420));
+  }
+  return out;
+}
+
+function serviceItems(q) {
+  if (q.length < 3 || q.length > 24 || /\s{2,}/.test(q)) return [];
+  const out = [];
+  for (const s of SERVICES) {
+    const sc = Math.max(fz(q, s.n.toLowerCase()), ...s.k.map((k) => fz(q, k)));
+    if (sc < 800) continue; // só nome/apelido que COMEÇA igual: nada de letras espalhadas
+    out.push({ id: 'service:' + s.d, kind: 'service', url: s.u, title: s.n, sub: `Abrir ${new URL(s.u).host} no navegador`, iconUrl: webIcons ? `https://www.google.com/s2/favicons?domain=${s.d}&sz=64` : '', tile: webIcons ? undefined : 'globe', color: '#0a84ff', score: Math.min(1350, sc + 250) });
   }
   return out;
 }
@@ -477,6 +491,7 @@ async function activate(it, ctrl = false) {
       await invoke('copy_text', { text: it.copy });
       hide();
       break;
+    case 'service':
     case 'web':
       await runAction('url', { url: it.url });
       hide();
@@ -606,6 +621,38 @@ async function openPreview() {
 function closePreview() { ql.hidden = true; ql.innerHTML = ''; input.focus(); }
 
 
+
+// ───────────────────────── novas versões ─────────────────────────
+// Aviso simples: consulta a última release no GitHub (1x por dia, desligável) e oferece abrir a página de download.
+const REPO = 'splt5k/glint-search';
+let appVersion = '';
+let updateInfo = null; // { version, url } quando há versão mais nova
+let checkUpdates = true;
+const isNewer = (a, b) => {
+  const p = (s) => s.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
+  const [x, y] = [p(a), p(b)];
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+  return false;
+};
+async function checkUpdate() {
+  try {
+    if (!appVersion) appVersion = await T.app.getVersion();
+    const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } });
+    if (!r.ok) return 'err';
+    const j = await r.json();
+    updateInfo = isNewer(j.tag_name, appVersion) ? { version: j.tag_name.replace(/^v/, ''), url: j.html_url } : null;
+    try { localStorage.setItem('glint.lastCheck', String(Date.now())); } catch {}
+    return updateInfo ? 'new' : 'ok';
+  } catch { return 'err'; }
+}
+function maybeCheckUpdate() {
+  if (!checkUpdates) return;
+  let last = 0;
+  try { last = +localStorage.getItem('glint.lastCheck') || 0; } catch {}
+  if (Date.now() - last < 24 * 3600e3) return;
+  checkUpdate().then((r) => { if (r === 'new') toast(`Glint ${updateInfo.version} disponível: veja em Configurações (Ctrl+,)`); });
+}
+
 // ───────────────────────── configurações ─────────────────────────
 let settingsOpen = false;
 let cfg = null; // cópia editável (só vai para o disco ao salvar)
@@ -646,6 +693,8 @@ function renderSettings(meta) {
       ${chk('cfAuto', 'Iniciar com o sistema', cfg.autostart)}
       ${chk('cfDrives', 'Indexar todos os discos', cfg.all_drives, 'Desligado: só Documentos, Downloads, Imagens etc. e as pastas extras.')}
       ${chk('cfBat', 'Pausar a indexação completa na bateria', cfg.pause_on_battery)}
+      ${chk('cfUpd', 'Avisar quando houver versão nova (consulta o GitHub 1x por dia)', cfg.check_updates)}
+      ${chk('cfIcons', 'Mostrar o ícone (favicon) dos sites conhecidos', cfg.web_icons, 'Baixado do serviço de ícones do Google, só para os sites da lista interna (Gmail, YouTube...).')}
     </div>
     <div class="set-block"><div class="set-lbl">Tema</div>
       <select id="cfTheme"><option value="system">Seguir o sistema</option><option value="light">Claro</option><option value="dark">Escuro</option></select></div>
@@ -653,6 +702,8 @@ function renderSettings(meta) {
     <div class="set-block"><div class="set-lbl">Pastas ignoradas <small>(uma por linha)</small></div><textarea id="cfExc" rows="2" spellcheck="false">${esc(cfg.exclude.join('\n'))}</textarea></div>
     <div class="set-block"><div class="set-lbl">Nunca sugerir <small>(itens ocultos das Sugestões; use Delete numa sugestão)</small></div>
       <div class="set-hidden">${cfg.never_suggest.length ? cfg.never_suggest.map((h) => `<span class="chip">${esc(h.title)} <button data-unhide="${esc(h.id)}" title="Voltar a sugerir">✕</button></span>`).join('') : '<small>Nenhum.</small>'}</div></div>
+    <div class="set-block"><div class="set-lbl">Versão <small id="cfVer"></small></div>
+      <div class="set-line"><button class="pbtn" id="cfCheck">Verificar agora</button><button class="pbtn pri" id="cfGet" hidden>Baixar</button></div></div>
     <div class="set-actions">
       <button class="pbtn" id="cfExport">Exportar…</button><button class="pbtn" id="cfImport">Importar…</button><button class="pbtn" id="cfReindex">Reindexar agora</button><button class="pbtn" id="cfForget" title="Zera as sugestões e o aprendizado de uso">Limpar sugestões</button>
       <span class="spacer"></span><button class="pbtn pri" id="cfSave">Salvar</button>
@@ -666,7 +717,7 @@ function renderSettings(meta) {
 }
 
 function collectSettings() {
-  return { ...cfg, autostart: $('cfAuto').checked, all_drives: $('cfDrives').checked, pause_on_battery: $('cfBat').checked, theme: $('cfTheme').value, include: lines($('cfInc').value), exclude: lines($('cfExc').value) };
+  return { ...cfg, autostart: $('cfAuto').checked, all_drives: $('cfDrives').checked, pause_on_battery: $('cfBat').checked, web_icons: $('cfIcons').checked, check_updates: $('cfUpd').checked, theme: $('cfTheme').value, include: lines($('cfInc').value), exclude: lines($('cfExc').value) };
 }
 const setMsg = (t, bad) => { const m = $('cfMsg'); if (m) { m.textContent = t; m.className = 'set-msg' + (bad ? ' bad' : ''); } };
 
@@ -683,7 +734,7 @@ function wireSettings(meta) {
   });
   $('cfHkReset').addEventListener('click', () => { cfg.hotkey = 'Ctrl+Space'; hk.value = prettyKey(cfg.hotkey); });
   $('cfSave').addEventListener('click', async () => {
-    try { const m = await invoke('config_set', { config: collectSettings() }); cfg = m.config; neverSuggest = new Set(cfg.never_suggest.map((h) => h.id)); applyThemePref(); setMsg('Salvo.'); }
+    try { const m = await invoke('config_set', { config: collectSettings() }); cfg = m.config; neverSuggest = new Set(cfg.never_suggest.map((h) => h.id)); webIcons = cfg.web_icons !== false; checkUpdates = cfg.check_updates !== false; applyThemePref(); setMsg('Salvo.'); }
     catch (e) { setMsg(String(e), true); }
   });
   $('cfExport').addEventListener('click', async () => {
@@ -696,6 +747,10 @@ function wireSettings(meta) {
     } catch (e) { setMsg(String(e), true); }
   });
   pbody.querySelectorAll('[data-unhide]').forEach((b) => b.addEventListener('click', () => { cfg.never_suggest = cfg.never_suggest.filter((h) => h.id !== b.dataset.unhide); b.closest('.chip').remove(); setMsg('Clique em Salvar para aplicar.'); }));
+  const verLine = () => { $('cfVer').textContent = updateInfo ? `v${appVersion} · nova: v${updateInfo.version}` : `v${appVersion || '?'}`; $('cfGet').hidden = !updateInfo; if (updateInfo) $('cfGet').textContent = `Baixar v${updateInfo.version}`; };
+  T.app.getVersion().then((v) => { appVersion = v; verLine(); }).catch(() => {});
+  $('cfCheck').addEventListener('click', async () => { setMsg('Verificando…'); const r = await checkUpdate(); verLine(); setMsg(r === 'new' ? `Versão ${updateInfo.version} disponível.` : r === 'ok' ? 'Você está na versão mais recente.' : 'Não consegui consultar o GitHub agora.', r === 'err'); });
+  $('cfGet').addEventListener('click', () => runAction('url', { url: updateInfo.url }));
   $('cfForget').addEventListener('click', async () => { await invoke('usage_forget', { id: null }); usage = {}; setMsg('Sugestões e histórico de uso limpos.'); });
   $('cfReindex').addEventListener('click', async () => { await invoke('reindex_now'); setMsg('Reindexando em segundo plano…'); });
   pbody.querySelectorAll('input,textarea,select').forEach((el) => el.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); }));
@@ -888,6 +943,9 @@ async function onShown(p) {
   neverSuggest = new Set(meta.config.never_suggest.map((h) => h.id));
   invoke('ssh_hosts').then((h) => { sshHosts = h; }).catch(() => {});
   pinnedIds = new Set(meta.config.pinned.map((h) => h.id));
+  webIcons = meta.config.web_icons !== false;
+  checkUpdates = meta.config.check_updates !== false;
+  maybeCheckUpdate();
   warmRates();
 }
 function onHidden() { $('app').classList.remove('in'); }

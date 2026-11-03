@@ -38,6 +38,8 @@ Depois de instalado ele inicia com o sistema (dá para desligar nas Configuraç�
 - **Ctrl+,**: Configurações. **Ctrl+K**: palavra-atalho para o item selecionado. **Espaço / Ctrl+Y**: prévia rápida.
 - **Enter** abre ou executa; **Ctrl+Enter** mostra o arquivo na pasta.
 - **Comandos na busca** (rodam só no Enter, e o item mostra o comando exato): `ssh usuario@host[:porta]` (também completa os apelidos do seu `~/.ssh/config`), `ping host`, `rdp host` (Windows), `\\servidor\pasta` (pasta de rede), `192.168.0.1:8080` (abre no navegador) e `brave globo` / `chrome globo.com` / `firefox receita` (navegador com pesquisa ou site).
+- **Sites conhecidos** (Gmail, YouTube, Hotmail/Outlook, WhatsApp Web, GitHub, ChatGPT...) aparecem pelo nome, com o ícone do site; Enter abre no navegador. O ícone vem do serviço de favicons do Google e dá para desligar em Configurações.
+- **Avisa quando há versão nova** (consulta o GitHub 1x por dia; desligável).
 - Busca de arquivos com várias palavras e extensão: `maio .docx` acha `ponto_maio.docx`.
 - Botão direito (ou Shift+F10) abre o menu do item: fixar nas sugestões, abrir local do arquivo, desinstalar, copiar caminho...
 - Exemplos: `timer 10 min`, `nota: comprar leite`, `reunião amanhã 14h`, `15% de 200`, `10 km em mi`, `100 usd em brl`.

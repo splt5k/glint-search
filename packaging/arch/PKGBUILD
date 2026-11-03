@@ -2,7 +2,7 @@
 # Compila a partir do código-fonte (NÃO testado ainda no Arch/CachyOS). Ajuste pkgver para a versão publicada.
 pkgname=glint-launcher
 _repo=glint-search
-pkgver=2.4.0
+pkgver=2.5.0
 pkgrel=1
 pkgdesc="Busca rápida de apps, arquivos e ações com visual de vidro translúcido (Windows/Linux)"
 arch=('x86_64')

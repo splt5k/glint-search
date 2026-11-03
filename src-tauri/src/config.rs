@@ -28,6 +28,10 @@ pub struct Config {
     pub never_suggest: Vec<Hidden>,
     /// Itens fixados no topo das sugestões.
     pub pinned: Vec<Hidden>,
+    /// Mostra o favicon dos sites conhecidos (a imagem vem do serviço de favicons do Google, só para a lista interna de sites).
+    pub web_icons: bool,
+    /// Consulta o GitHub (1x por dia) para avisar de versão nova.
+    pub check_updates: bool,
 }
 
 impl Default for Config {
@@ -42,6 +46,8 @@ impl Default for Config {
             pause_on_battery: true,
             never_suggest: vec![],
             pinned: vec![],
+            web_icons: true,
+            check_updates: true,
         }
     }
 }

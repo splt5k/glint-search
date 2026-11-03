@@ -31,6 +31,8 @@ struct Ent {
 pub struct FileIndex {
     dirs: Vec<String>,
     personal: Vec<bool>,
+    /// pasta de programa/dependências (Program Files, node_modules...): os arquivos de dentro quase nunca são o que se procura
+    noise: Vec<bool>,
     ents: Vec<Ent>,
     names: String,
     lower: String,
@@ -164,6 +166,7 @@ impl FileIndex {
             for d in &part.dirs {
                 let p = Path::new(d);
                 idx.personal.push(personal_roots.iter().any(|r| p.starts_with(r)));
+                idx.noise.push(is_noise_dir(d));
             }
             idx.dirs.extend(part.dirs);
             for e in part.ents {
@@ -245,9 +248,16 @@ impl FileIndex {
                         if self.personal[e.dir as usize] {
                             s += 40;
                         }
+                        if self.noise[e.dir as usize] {
+                            s -= 350;
+                        }
+                        if matches!(ext_of(ln), "crx" | "dll" | "dat" | "pak" | "so" | "lib" | "obj" | "map" | "cache" | "bin" | "manifest") {
+                            s -= 250;
+                        }
                         if e.mtime > 0 && now.saturating_sub(e.mtime) < 30 * 86_400 {
                             s += 25;
                         }
+                        let s = s.max(1);
                         out.push((s, ci * 65_536 + i));
                         if out.len() >= MAX_CANDIDATES {
                             break;
@@ -299,6 +309,15 @@ impl FileIndex {
         items.sort_by(|a, b| b.mtime.cmp(&a.mtime));
         items.into_iter().map(|e| self.hit(e, 0)).collect()
     }
+}
+
+fn is_noise_dir(dir: &str) -> bool {
+    const MARKS: &[&str] = &[
+        "\\program files", "\\programdata\\", "\\windows\\", "\\programs\\", "\\default_apps", "\\node_modules\\",
+        "\\site-packages\\", "\\.git\\", "\\vendor\\", "/usr/lib", "/usr/share", "/opt/", "/snap/", "/var/lib",
+    ];
+    let l = dir.to_lowercase();
+    MARKS.iter().any(|m| l.contains(m))
 }
 
 fn ext_of(lname: &str) -> &str {
