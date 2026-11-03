@@ -19,7 +19,11 @@ pub fn is_enabled() -> bool {
 }
 
 pub fn set(enabled: bool) -> Result<(), String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    // AppImage: o executável em uso fica numa pasta temporária que some a cada reinício; vale o caminho do próprio arquivo .AppImage.
+    let exe = match std::env::var_os("APPIMAGE").map(std::path::PathBuf::from).filter(|p| p.exists()) {
+        Some(p) => p,
+        None => std::env::current_exe().map_err(|e| e.to_string())?,
+    };
     #[cfg(windows)]
     {
         use winreg::{enums::*, RegKey};
@@ -39,7 +43,7 @@ pub fn set(enabled: bool) -> Result<(), String> {
         if enabled {
             std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
             let body = format!(
-                "[Desktop Entry]\nType=Application\nName=Glint\nExec={}\nX-GNOME-Autostart-enabled=true\n",
+                "[Desktop Entry]\nType=Application\nName=Glint\nExec=\"{}\"\nX-GNOME-Autostart-enabled=true\n",
                 exe.display()
             );
             std::fs::write(path, body).map_err(|e| e.to_string())
