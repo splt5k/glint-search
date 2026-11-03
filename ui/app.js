@@ -892,6 +892,9 @@ document.getElementById('stage').addEventListener('mousedown', (e) => { if (e.ta
 document.addEventListener('keydown', async (e) => {
   const ctrl = e.ctrlKey || e.metaKey;
 
+  // Se o foco do teclado chegou mas o campo não está ativo, a primeira letra digitada já cai na busca
+  if (!ctrl && !e.altKey && e.key.length === 1 && !input.hidden && !settingsOpen && !form && qkbar.hidden && ql.hidden && ctxEl.hidden && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')) input.focus();
+
   if (e.key === 'Escape') {
     e.preventDefault();
     if (!ql.hidden) return closePreview();
@@ -967,6 +970,8 @@ function onHidden() { $('app').classList.remove('in'); }
 
 T.event.listen('shown', (e) => onShown(e.payload));
 T.event.listen('hidden', onHidden);
+// Linux: o foco do sistema pode chegar atrasado; recoloca o cursor no campo sem roubar o foco de outro campo
+T.event.listen('refocus', () => { window.focus(); const a = document.activeElement; if (!a || a === document.body) input.focus(); });
 T.event.listen('open-settings', () => openSettings());
 window.addEventListener('blur', () => {});
 window.__spot = { activate, setFilter, get items() { return items; } }; // depuração

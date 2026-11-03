@@ -71,6 +71,25 @@ pub fn show(app: &AppHandle) {
         "shown",
         json!({ "dark": t.dark, "accent": t.accent, "bd": if bd_ok { seq } else { 0 }, "w": WIN_W, "h": WIN_MAX_H }),
     );
+
+    // Linux (X11): o gerenciador de janelas costuma recusar o foco do teclado a uma janela que aparece por atalho global.
+    // Insistimos algumas vezes logo depois de abrir e avisamos a interface para recolocar o cursor no campo.
+    #[cfg(target_os = "linux")]
+    {
+        let app = app.clone();
+        std::thread::spawn(move || {
+            for ms in [40u64, 100, 200, 400] {
+                std::thread::sleep(std::time::Duration::from_millis(ms));
+                if let Some(w) = app.get_webview_window("main") {
+                    if !w.is_visible().unwrap_or(false) {
+                        return;
+                    }
+                    let _ = w.set_focus();
+                }
+                let _ = app.emit("refocus", ());
+            }
+        });
+    }
 }
 
 /// Linux: sem captura do fundo por enquanto (a UI cai no vidro com véu sólido).
