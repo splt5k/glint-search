@@ -2,6 +2,7 @@ mod actions;
 mod autostart;
 mod apps;
 mod clip;
+mod cmd;
 mod config;
 mod fuzzy;
 mod index;
@@ -265,6 +266,17 @@ async fn app_uninstall(state: St<'_>, name: String) -> Result<String, String> {
         let _ = (&state, &name);
         Err("Desinstalar ainda não é suportado no Linux: use o gerenciador de pacotes da sua distro.".into())
     }
+}
+
+/// Comandos digitados (ssh, rdp, ping, pasta de rede, navegador com pesquisa), validados em cmd.rs.
+#[tauri::command]
+async fn run_cmd(args: cmd::CmdArgs) -> Result<(), String> {
+    cmd::run(&args)
+}
+
+#[tauri::command]
+async fn ssh_hosts() -> Vec<String> {
+    cmd::ssh_hosts()
 }
 
 /// Pede para um item nunca aparecer nas sugestões (e zera o uso dele).
@@ -570,7 +582,7 @@ pub fn run() {
         .manage(state.clone())
         .invoke_handler(tauri::generate_handler![
             search, list_apps, recent, open_item, reveal, file_info, clip_list, clip_copy, clip_delete,
-            clip_clear, copy_text, run_action, usage_get, usage_forget, suggest_hide, suggest_pin, app_reveal, app_uninstall, quick_get, quick_set, quick_remove, hide_window,
+            clip_clear, copy_text, run_action, usage_get, usage_forget, suggest_hide, suggest_pin, app_reveal, app_uninstall, run_cmd, ssh_hosts, quick_get, quick_set, quick_remove, hide_window,
             resize_window, reindex_now, config_get, config_set, config_export, config_import
         ])
         .on_window_event(|win, event| {

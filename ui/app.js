@@ -63,7 +63,7 @@ const ACTIONS = [
 ];
 const A_BY_ID = Object.fromEntries(ACTIONS.map((a) => [a.id, a]));
 
-const GROUP = { app: 'Aplicativos', folder: 'Pastas', file: 'Documentos e arquivos', setting: 'Configurações', action: 'Ações', nlp: 'Ações', calc: 'Calculadora', conv: 'Conversão', web: 'Pesquisar na web', clip: 'Área de transferência' };
+const GROUP = { cmd: 'Ações', app: 'Aplicativos', folder: 'Pastas', file: 'Documentos e arquivos', setting: 'Configurações', action: 'Ações', nlp: 'Ações', calc: 'Calculadora', conv: 'Conversão', web: 'Pesquisar na web', clip: 'Área de transferência' };
 const FILE_CHIPS = [['Todos', 'all'], ['Imagens', 'images'], ['Documentos', 'docs'], ['PDFs', 'pdf'], ['Mídia', 'media'], ['Pastas', 'folders']];
 
 // ───────────────────────── estado ─────────────────────────
@@ -180,11 +180,14 @@ function actionItem(def, score = 500) {
   return { id: 'action:' + def.id, kind: 'action', actionId: def.id, def, title: def.title, sub: def.sub, tile: def.icon, color: def.color, score, danger: !!def.confirm };
 }
 // aplicativos ganham de pastas/arquivos de nome parecido: num lançador, digitar um nome costuma ser para abrir o programa
-function boost(it) { return (it.score || 0) + Math.min(usage[it.id] || 0, 10) * 30 + (it.kind === 'app' ? 250 : 0); }
+// ordem por tipo quando o texto casa de forma parecida: aplicativo, ação, pasta, arquivo (nome idêntico continua forte)
+const TIER = { app: 250, action: 220, folder: 60 };
+function boost(it) { return (it.score || 0) + Math.min(usage[it.id] || 0, 10) * 30 + (TIER[it.kind] || 0); }
 
 function localHits(q, onlyActions = false) {
   const out = [];
   let m;
+  if (!onlyActions) out.push(...commandItems(q));
   if (!onlyActions) {
     const c = calculate(q);
     if (c) out.push({ id: 'calc', kind: 'calc', title: c, sub: `${q} =`, copy: c, tile: 'calc', color: '#ff9f0a', score: 1500 });
@@ -255,6 +258,49 @@ function sectionize(list, { withTop = true } = {}) {
   });
   for (const [title, its] of rest) sections.push({ title, items: its });
   return sections;
+}
+
+
+// ───────────────────────── comandos digitados ─────────────────────────
+// ssh, rdp, ping, pasta de rede, IP e "navegador pesquisa". Nada roda sem Enter; o comando exato aparece no item.
+let sshHosts = [];
+const NAME = '[A-Za-z0-9][A-Za-z0-9._-]*';
+const BROWSERS = { brave: 'Brave', chrome: 'Chrome', firefox: 'Firefox', edge: 'Edge', msedge: 'Edge', opera: 'Opera', vivaldi: 'Vivaldi' };
+const cmdItem = (id, cmd, title, sub, tile, color, score = 1400) => ({ id: 'cmd:' + id, kind: 'cmd', cmd, title, sub, tile, color, score });
+
+function commandItems(q) {
+  const out = [];
+  let m;
+  if ((m = q.match(new RegExp(`^ssh\\s+(?:([A-Za-z0-9._-]{1,64})@)?(${NAME})(?::(\\d{1,5}))?$`, 'i')))) {
+    const [, user = '', host, port = ''] = m;
+    const shown = `${user ? user + '@' : ''}${host}`;
+    out.push(cmdItem(`ssh:${shown}:${port}`, { kind: 'ssh', user, host, port: +port || 0 }, `Conectar por SSH a ${shown}${port ? ':' + port : ''}`, `Abre o terminal com: ssh ${port ? '-p ' + port + ' ' : ''}${shown}`, 'term', '#1c1c1e'));
+  } else if ((m = q.match(/^ssh\s+(\S*)$/i))) {
+    for (const h of sshHosts.filter((x) => x.toLowerCase().startsWith(m[1].toLowerCase())).slice(0, 6)) {
+      out.push(cmdItem(`sshalias:${h}`, { kind: 'ssh', user: '', host: h, port: 0 }, `Conectar por SSH a ${h}`, `Do seu ~/.ssh/config · ssh ${h}`, 'term', '#1c1c1e', 1300));
+    }
+  }
+  if ((m = q.match(new RegExp(`^rdp\\s+(${NAME})(?::(\\d{1,5}))?$`, 'i'))) && IS_WIN) {
+    out.push(cmdItem(`rdp:${m[1]}:${m[2] || ''}`, { kind: 'rdp', host: m[1], port: +m[2] || 0 }, `Área de Trabalho Remota em ${m[1]}`, `Abre o mstsc /v:${m[1]}${m[2] ? ':' + m[2] : ''}`, 'term', '#0a84ff'));
+  }
+  if ((m = q.match(new RegExp(`^ping\\s+(${NAME})$`, 'i')))) {
+    out.push(cmdItem(`ping:${m[1]}`, { kind: 'ping', host: m[1] }, `Ping em ${m[1]}`, `Abre o terminal com: ping ${m[1]}`, 'term', '#1c1c1e'));
+  }
+  if ((m = q.match(/^(?:\\\\|\/\/)([A-Za-z0-9][A-Za-z0-9._-]*)((?:[\\/][^\\/:*?"<>|]+)*)[\\/]?$/))) {
+    const path = '\\\\' + m[1] + m[2].replace(/\//g, '\\');
+    out.push(cmdItem('unc:' + path, { kind: 'unc', path }, 'Abrir pasta de rede', path, 'folder', '#ff9f0a'));
+  }
+  if ((m = q.match(/^(\d{1,3}(?:\.\d{1,3}){3})(:\d{1,5})?(\/\S*)?$/)) && m[1].split('.').every((o) => +o <= 255)) {
+    const url = 'http://' + q;
+    out.push(cmdItem('url:' + url, { kind: 'url', url }, `Abrir ${url} no navegador`, 'Endereço de rede', 'globe', '#0a84ff'));
+  }
+  if ((m = q.match(/^(brave|chrome|firefox|edge|msedge|opera|vivaldi)\s+(\S.*)$/i))) {
+    const b = m[1].toLowerCase(), rest = m[2].trim(), name = BROWSERS[b];
+    const isUrl = /^https?:\/\/\S+$/i.test(rest) || /^[\w-]+(\.[\w-]+)+(:\d+)?(\/\S*)?$/.test(rest);
+    const url = isUrl ? (/^https?:\/\//i.test(rest) ? rest : 'https://' + rest) : `https://www.google.com/search?q=${enc(rest)}`;
+    out.push(cmdItem(`browser:${b}:${rest}`, { kind: 'browser', browser: b, url }, isUrl ? `Abrir ${rest} no ${name}` : `Pesquisar "${rest}" no ${name}`, `Abre o ${name} direto`, 'globe', '#0a84ff', 1420));
+  }
+  return out;
 }
 
 // ───────────────────────── busca ─────────────────────────
@@ -419,6 +465,11 @@ async function activate(it, ctrl = false) {
       if (await runAction(def.id, {})) hide();
       break;
     }
+    case 'cmd':
+      if (it.cmd.kind === 'url') await runAction('url', { url: it.cmd.url });
+      else { try { await invoke('run_cmd', { args: it.cmd }); } catch (e) { toast(String(e)); return; } }
+      hide();
+      break;
     case 'nlp':
       if (await runAction(it.actionId, it.args)) hide();
       break;
@@ -835,6 +886,7 @@ async function onShown(p) {
   let meta;
   [usage, quick, meta] = await Promise.all([invoke('usage_get'), invoke('quick_get'), invoke('config_get')]);
   neverSuggest = new Set(meta.config.never_suggest.map((h) => h.id));
+  invoke('ssh_hosts').then((h) => { sshHosts = h; }).catch(() => {});
   pinnedIds = new Set(meta.config.pinned.map((h) => h.id));
   warmRates();
 }
