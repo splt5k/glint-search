@@ -5,3 +5,8 @@ src-tauri/app-icon.png
 scratch/
 _legacy_wpf/
 *.log
+
+# chaves de assinatura do atualizador: NUNCA versionar
+~/
+*.key
+.tauri/

@@ -1,6 +1,6 @@
 [package]
 name = "glint"
-version = "2.5.0"
+version = "2.6.0"
 description = "Glint: busca rápida para Windows e Linux"
 edition = "2021"
 
@@ -32,6 +32,7 @@ tauri-plugin-global-shortcut = "2.4.1"
 tauri-plugin-notification = "2.8.0"
 tauri-plugin-single-instance = "2.5.5"
 tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2"
 
 [target."cfg(windows)".dependencies]
 xcap = "0.9.8"

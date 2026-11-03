@@ -634,9 +634,15 @@ const isNewer = (a, b) => {
   for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
   return false;
 };
+let canSelfUpdate = false; // true quando o atualizador assinado achou a versão (Windows/AppImage)
 async function checkUpdate() {
   try {
     if (!appVersion) appVersion = await T.app.getVersion();
+    canSelfUpdate = false;
+    try {
+      const u = await invoke('update_check');
+      if (u) { updateInfo = { version: u.version, url: `https://github.com/${REPO}/releases/latest` }; canSelfUpdate = true; try { localStorage.setItem('glint.lastCheck', String(Date.now())); } catch {} return 'new'; }
+    } catch { /* sem suporte a atualização automática aqui: usa o aviso pelo GitHub */ }
     const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } });
     if (!r.ok) return 'err';
     const j = await r.json();
@@ -747,10 +753,14 @@ function wireSettings(meta) {
     } catch (e) { setMsg(String(e), true); }
   });
   pbody.querySelectorAll('[data-unhide]').forEach((b) => b.addEventListener('click', () => { cfg.never_suggest = cfg.never_suggest.filter((h) => h.id !== b.dataset.unhide); b.closest('.chip').remove(); setMsg('Clique em Salvar para aplicar.'); }));
-  const verLine = () => { $('cfVer').textContent = updateInfo ? `v${appVersion} · nova: v${updateInfo.version}` : `v${appVersion || '?'}`; $('cfGet').hidden = !updateInfo; if (updateInfo) $('cfGet').textContent = `Baixar v${updateInfo.version}`; };
+  const verLine = () => { $('cfVer').textContent = updateInfo ? `v${appVersion} · nova: v${updateInfo.version}` : `v${appVersion || '?'}`; $('cfGet').hidden = !updateInfo; if (updateInfo) $('cfGet').textContent = canSelfUpdate ? `Atualizar para v${updateInfo.version}` : `Baixar v${updateInfo.version}`; };
   T.app.getVersion().then((v) => { appVersion = v; verLine(); }).catch(() => {});
   $('cfCheck').addEventListener('click', async () => { setMsg('Verificando…'); const r = await checkUpdate(); verLine(); setMsg(r === 'new' ? `Versão ${updateInfo.version} disponível.` : r === 'ok' ? 'Você está na versão mais recente.' : 'Não consegui consultar o GitHub agora.', r === 'err'); });
-  $('cfGet').addEventListener('click', () => runAction('url', { url: updateInfo.url }));
+  $('cfGet').addEventListener('click', async () => {
+    if (!canSelfUpdate) return runAction('url', { url: updateInfo.url });
+    setMsg('Baixando e instalando… o Glint vai reiniciar.');
+    try { await invoke('update_install'); } catch (e) { setMsg(String(e), true); }
+  });
   $('cfForget').addEventListener('click', async () => { await invoke('usage_forget', { id: null }); usage = {}; setMsg('Sugestões e histórico de uso limpos.'); });
   $('cfReindex').addEventListener('click', async () => { await invoke('reindex_now'); setMsg('Reindexando em segundo plano…'); });
   pbody.querySelectorAll('input,textarea,select').forEach((el) => el.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); }));

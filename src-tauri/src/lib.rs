@@ -30,6 +30,7 @@ use tauri::{
     AppHandle, Emitter, LogicalSize, Manager, State, WindowEvent,
 };
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_updater::UpdaterExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 pub struct AppState {
@@ -266,6 +267,25 @@ async fn app_uninstall(state: St<'_>, name: String) -> Result<String, String> {
         let _ = (&state, &name);
         Err("Desinstalar ainda não é suportado no Linux: use o gerenciador de pacotes da sua distro.".into())
     }
+}
+
+/// Procura uma versão nova assinada (latest.json da última release no GitHub).
+#[tauri::command]
+async fn update_check(app: AppHandle) -> Result<Option<Value>, String> {
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let found = updater.check().await.map_err(|e| e.to_string())?;
+    Ok(found.map(|u| json!({ "version": u.version, "notes": u.body })))
+}
+
+/// Baixa, confere a assinatura, instala e reinicia o Glint.
+#[tauri::command]
+async fn update_install(app: AppHandle) -> Result<(), String> {
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let Some(update) = updater.check().await.map_err(|e| e.to_string())? else {
+        return Err("Você já está na versão mais recente.".into());
+    };
+    update.download_and_install(|_, _| {}, || {}).await.map_err(|e| e.to_string())?;
+    app.restart();
 }
 
 /// Comandos digitados (ssh, rdp, ping, pasta de rede, navegador com pesquisa), validados em cmd.rs.
@@ -564,6 +584,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| window::show(app)))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, _sc, event| {
@@ -582,7 +603,7 @@ pub fn run() {
         .manage(state.clone())
         .invoke_handler(tauri::generate_handler![
             search, list_apps, recent, open_item, reveal, file_info, clip_list, clip_copy, clip_delete,
-            clip_clear, copy_text, run_action, usage_get, usage_forget, suggest_hide, suggest_pin, app_reveal, app_uninstall, run_cmd, ssh_hosts, quick_get, quick_set, quick_remove, hide_window,
+            clip_clear, copy_text, run_action, usage_get, usage_forget, suggest_hide, suggest_pin, app_reveal, app_uninstall, run_cmd, ssh_hosts, update_check, update_install, quick_get, quick_set, quick_remove, hide_window,
             resize_window, reindex_now, config_get, config_set, config_export, config_import
         ])
         .on_window_event(|win, event| {
