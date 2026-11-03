@@ -57,9 +57,10 @@ say "Instalado em $DESTINO"
 ICONE_DIR="$HOME/.local/share/icons/hicolor/128x128/apps"
 mkdir -p "$ICONE_DIR"
 TMP="$(mktemp -d)"
-( cd "$TMP" && "$DESTINO" --appimage-extract '*.png' >/dev/null 2>&1 || true )
-ICONE="$(find "$TMP/squashfs-root" -maxdepth 6 -name '*.png' 2>/dev/null | head -n 1 || true)"
-if [ -n "$ICONE" ]; then cp -f "$ICONE" "$ICONE_DIR/glint.png"; else warn "não consegui extrair o ícone (sem problema)"; fi
+( cd "$TMP" && "$DESTINO" --appimage-extract 'usr/share/icons/hicolor/*/apps/*.png' >/dev/null 2>&1 ) || true
+# só arquivos de verdade (o AppImage também tem links simbólicos com o mesmo nome, que ficam quebrados ao extrair só o ícone)
+ICONE="$(find "$TMP/squashfs-root" -type f -name '*.png' 2>/dev/null | sort | tail -n 1 || true)"
+if [ -n "$ICONE" ] && cp -f "$ICONE" "$ICONE_DIR/glint.png"; then :; else warn "não consegui extrair o ícone (sem problema, o Glint funciona igual)"; fi
 rm -rf "$TMP"
 
 # 6) atalho no menu de aplicativos
