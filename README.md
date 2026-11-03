@@ -46,6 +46,7 @@ Guarda texto, **imagens** (prints, imagens copiadas), **arquivos e vídeos** cop
 Em `Ctrl+,` ou no ícone da bandeja: atalho (com aviso se já estiver em uso por outro programa), iniciar com o sistema, tema, pastas extras e ignoradas, indexar todos os discos ou só as pastas pessoais, pausar a indexação na bateria. **Exportar** e **Importar** salvam/leem um `.json`; ao importar, você revisa e clica em Salvar. O arquivo de configuração fica em `%LOCALAPPDATA%\Glint\config.json` (Windows) ou `~/.local/share/Glint/config.json` (Linux).
 
 ## Desempenho
+- **Indexa todos os discos por padrão**, para a busca ser um ponto único: no Windows, todos os discos fixos; no Linux, todos os discos reais montados (ext4, btrfs, xfs, NTFS, exFAT...), sem as pastas do sistema. Para excluir algo, use **Pastas ignoradas** nas Configurações.
 - Índice de nomes de arquivos em memória (cerca de 290 mil itens em ~0,3 s no teste do autor, com limite de itens).
 - A indexação roda em poucas threads de baixa prioridade (CPU e disco) e, na bateria, só indexa as pastas pessoais.
 - A busca roda em segundo plano; cada tecla cancela a anterior.

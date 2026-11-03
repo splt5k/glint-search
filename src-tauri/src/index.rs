@@ -45,7 +45,7 @@ const NOISE_DIRS: &[&str] = &[
 
 const SYSTEM_ROOT_DIRS: &[&str] = &[
     "Windows", "Program Files", "Program Files (x86)", "ProgramData", "System Volume Information",
-    "Recovery", "$WinREAgent", "PerfLogs", "Config.Msi", "Documents and Settings",
+    "Recovery", "$WinREAgent", "PerfLogs", "Config.Msi", "Documents and Settings", "lost+found",
 ];
 
 struct RawEnt {
@@ -352,7 +352,44 @@ pub fn drive_roots() -> Vec<PathBuf> {
         .collect()
 }
 
-#[cfg(not(windows))]
+/// Linux: todos os discos reais montados (ext4, btrfs, xfs, ntfs, exfat...), sem os diretórios do sistema.
+#[cfg(target_os = "linux")]
+pub fn drive_roots() -> Vec<PathBuf> {
+    const REAL_FS: &[&str] = &[
+        "ext2", "ext3", "ext4", "btrfs", "xfs", "f2fs", "jfs", "reiserfs", "zfs", "ntfs", "ntfs3", "fuseblk", "vfat", "exfat",
+    ];
+    // Do disco do sistema só entram as pastas de dados (o resto de "/" é ruído: usr, var, etc...).
+    const ROOT_DATA_DIRS: &[&str] = &["/home", "/root", "/mnt", "/media", "/srv", "/opt"];
+
+    let mut roots: Vec<PathBuf> = Vec::new();
+    if let Ok(mounts) = std::fs::read_to_string("/proc/mounts") {
+        for line in mounts.lines() {
+            let mut f = line.split_whitespace();
+            let (_dev, mp, fs) = (f.next(), f.next(), f.next());
+            let (Some(mp), Some(fs)) = (mp, fs) else { continue };
+            if !REAL_FS.contains(&fs) {
+                continue;
+            }
+            let mp = mp.replace("\\040", " "); // espaços aparecem escapados em /proc/mounts
+            if mp == "/" {
+                roots.extend(ROOT_DATA_DIRS.iter().map(PathBuf::from).filter(|p| p.is_dir()));
+            } else if !["/boot", "/snap", "/var", "/usr", "/etc", "/tmp"].iter().any(|x| mp.starts_with(x)) {
+                roots.push(PathBuf::from(mp));
+            }
+        }
+    }
+    if let Some(h) = dirs::home_dir() {
+        roots.push(h);
+    }
+    // sem duplicatas nem pastas dentro de outra raiz já incluída
+    roots.sort();
+    roots.dedup();
+    let all = roots.clone();
+    roots.retain(|r| !all.iter().any(|o| o != r && r.starts_with(o)));
+    roots
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn drive_roots() -> Vec<PathBuf> {
     dirs::home_dir().into_iter().collect()
 }
