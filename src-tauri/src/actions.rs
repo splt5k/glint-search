@@ -1,5 +1,6 @@
 use crate::util::url_encode;
 use serde_json::Value;
+#[cfg(windows)]
 use std::process::Command;
 use tauri::AppHandle;
 use tauri_plugin_notification::NotificationExt;
@@ -9,7 +10,7 @@ fn arg_str(args: &Value, key: &str) -> String {
 }
 
 fn silent(program: &str, args: &[&str]) {
-    let mut c = Command::new(program);
+    let mut c = crate::util::command(program);
     c.args(args);
     #[cfg(windows)]
     {
@@ -61,6 +62,13 @@ pub fn run(app: &AppHandle, id: &str, args: &Value) -> Result<String, String> {
         "empty_trash" => {
             #[cfg(windows)]
             silent("powershell", &["-NoProfile", "-Command", "Clear-RecycleBin -Force -ErrorAction SilentlyContinue"]);
+            #[cfg(not(windows))]
+            {
+                let ok = crate::util::command("gio").args(["trash", "--empty"]).status().map(|s| s.success()).unwrap_or(false);
+                if !ok {
+                    return Err("Não foi possível esvaziar a lixeira".into());
+                }
+            }
             Ok("Lixeira esvaziada".into())
         }
         "taskmgr" => {
@@ -108,7 +116,7 @@ pub fn run(app: &AppHandle, id: &str, args: &Value) -> Result<String, String> {
             let path = dir.join(format!("{}.md", name));
             let content = format!("# {}\n\n{}\n", if title.is_empty() { &name } else { &title }, text);
             std::fs::write(&path, content).map_err(|e| e.to_string())?;
-            opener::open(&path).map_err(|e| e.to_string())?;
+            crate::util::open(&path)?;
             Ok("Nota criada".into())
         }
         "email" => {
@@ -116,12 +124,12 @@ pub fn run(app: &AppHandle, id: &str, args: &Value) -> Result<String, String> {
             let subject = arg_str(args, "subject");
             let body = arg_str(args, "body");
             let url = format!("mailto:{}?subject={}&body={}", url_encode(&to), url_encode(&subject), url_encode(&body));
-            opener::open(url).map_err(|e| e.to_string())?;
+            crate::util::open(url)?;
             Ok(String::new())
         }
         "message" => {
             let text = arg_str(args, "text");
-            opener::open(format!("https://wa.me/?text={}", url_encode(&text))).map_err(|e| e.to_string())?;
+            crate::util::open(format!("https://wa.me/?text={}", url_encode(&text)))?;
             Ok(String::new())
         }
         "event" => {
@@ -141,7 +149,7 @@ pub fn run(app: &AppHandle, id: &str, args: &Value) -> Result<String, String> {
             );
             let path = std::env::temp_dir().join(format!("{}.ics", sanitize(&title)));
             std::fs::write(&path, ics).map_err(|e| e.to_string())?;
-            opener::open(&path).map_err(|e| e.to_string())?;
+            crate::util::open(&path)?;
             Ok("Evento criado".into())
         }
         "url" => {
@@ -149,7 +157,7 @@ pub fn run(app: &AppHandle, id: &str, args: &Value) -> Result<String, String> {
             if !(url.starts_with("http://") || url.starts_with("https://")) {
                 return Err("URL inválida".into());
             }
-            opener::open(url).map_err(|e| e.to_string())?;
+            crate::util::open(url)?;
             Ok(String::new())
         }
         other => Err(format!("Ação desconhecida: {}", other)),

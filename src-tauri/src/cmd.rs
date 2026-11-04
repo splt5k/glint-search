@@ -4,6 +4,7 @@
 use serde::Deserialize;
 #[cfg(not(windows))]
 use std::path::PathBuf;
+#[cfg(windows)]
 use std::process::Command;
 
 #[derive(Deserialize, Debug)]
@@ -68,7 +69,7 @@ fn in_terminal(prog: &str, args: &[String]) -> Result<(), String> {
         ];
         for (term, flags) in TERMS {
             if which(term).is_some() {
-                return Command::new(term).args(*flags).arg(prog).args(args).spawn().map(|_| ()).map_err(|e| e.to_string());
+                return crate::util::command(term).args(*flags).arg(prog).args(args).spawn().map(|_| ()).map_err(|e| e.to_string());
             }
         }
         Err("Nenhum terminal encontrado (instale gnome-terminal, konsole, xterm...).".into())
@@ -113,7 +114,7 @@ fn open_in_browser(browser: &str, url: &str) -> Result<(), String> {
     };
     for b in bins {
         if which(b).is_some() {
-            return Command::new(b).arg(url).spawn().map(|_| ()).map_err(|e| e.to_string());
+            return crate::util::command(b).arg(url).spawn().map(|_| ()).map_err(|e| e.to_string());
         }
     }
     Err(format!("Não encontrei o {browser} instalado."))
@@ -160,13 +161,13 @@ pub fn run(a: &CmdArgs) -> Result<(), String> {
             }
             #[cfg(windows)]
             {
-                opener::open(&a.path).map_err(|e| e.to_string())
+                crate::util::open(&a.path)
             }
             #[cfg(not(windows))]
             {
                 // \\host\share\pasta -> smb://host/share/pasta
                 let url = format!("smb://{}", a.path.trim_start_matches('\\').replace('\\', "/"));
-                opener::open(url).map_err(|e| e.to_string())
+                crate::util::open(url)
             }
         }
         "browser" => {

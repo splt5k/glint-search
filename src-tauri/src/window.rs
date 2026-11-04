@@ -30,6 +30,44 @@ fn focus_webview(app: &AppHandle) {
     }
 }
 
+/// Pede o foco da janela ao gerenciador de janelas e depois o dá ao componente da página.
+fn focus_window(app: &AppHandle) {
+    #[cfg(target_os = "linux")]
+    {
+        let h = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            if let Some(w) = h.get_webview_window("main") {
+                if !present_x11(&w) {
+                    let _ = w.set_focus();
+                }
+            }
+            focus_webview(&h);
+        });
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.set_focus();
+        }
+        focus_webview(app);
+    }
+}
+
+/// Linux/X11: o `set_focus` do Tauri pede o foco com o horário 0, que o GTK troca pelo último uso do próprio Glint
+/// (antigo). O GNOME (Mutter) entende isso como roubo de foco e recusa: a janela abre, mas sem foco.
+/// Com o horário atual do servidor X o pedido vale como recente e é aceito. Fora do X11 (Wayland) devolve false.
+#[cfg(target_os = "linux")]
+fn present_x11(w: &tauri::WebviewWindow) -> bool {
+    use gtk::{glib::Cast, prelude::*};
+    let Ok(gw) = w.gtk_window() else { return false };
+    let Some(gdk_win) = gw.window() else { return false };
+    let Ok(x) = gdk_win.downcast::<gdkx11::X11Window>() else { return false };
+    let ts = gdkx11::functions::x11_get_server_time(&x);
+    x.set_user_time(ts);
+    gw.present_with_time(ts);
+    true
+}
+
 pub fn hide(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.hide();
@@ -74,9 +112,8 @@ pub fn show(app: &AppHandle) {
     let seq = state.backdrop_seq.fetch_add(1, Ordering::SeqCst) + 1;
     let t = theme::current();
     let r1 = w.show();
-    let r2 = w.set_focus();
-    focus_webview(app);
-    crate::dlog!("show: {:?} focus: {:?} visible: {:?} pos: {:?} size: {:?}", r1, r2, w.is_visible(), w.outer_position(), w.outer_size());
+    focus_window(app);
+    crate::dlog!("show: {:?} visible: {:?} pos: {:?} size: {:?}", r1, w.is_visible(), w.outer_position(), w.outer_size());
     let _ = app.emit(
         "shown",
         json!({ "dark": t.dark, "accent": t.accent, "bd": if bd_ok { seq } else { 0 }, "w": WIN_W, "h": WIN_MAX_H }),
@@ -94,9 +131,8 @@ pub fn show(app: &AppHandle) {
                     if !w.is_visible().unwrap_or(false) {
                         return;
                     }
-                    let _ = w.set_focus();
                 }
-                focus_webview(&app);
+                focus_window(&app);
                 let _ = app.emit("refocus", ());
             }
         });

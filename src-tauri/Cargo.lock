@@ -1676,6 +1676,8 @@ dependencies = [
  "arboard",
  "chrono",
  "dirs",
+ "gdkx11",
+ "gtk",
  "image",
  "libc",
  "opener",

@@ -175,7 +175,7 @@ async fn open_item(state: St<'_>, id: String, kind: String, path: String) -> Res
             apps::launch(&path, &exec);
             Ok(())
         }
-        _ => opener::open(&path).map_err(|e| e.to_string()),
+        _ => util::open(&path),
     }
 }
 

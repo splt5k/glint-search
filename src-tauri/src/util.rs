@@ -63,3 +63,60 @@ macro_rules! elog {
         let _ = writeln!(std::io::stderr(), $($a)*);
     }};
 }
+
+/// Prepara um programa externo para rodar. No AppImage, o Glint roda com variáveis que apontam para as bibliotecas
+/// do próprio pacote (LD_LIBRARY_PATH, PYTHONHOME, GIO_MODULE_DIR...); herdadas, elas quebram o que abrimos
+/// (terminal, monitor do sistema, `gio`/`xdg-open`, apps). Aqui elas são removidas só para o processo filho.
+pub fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
+    #[allow(unused_mut)]
+    let mut c = std::process::Command::new(program);
+    #[cfg(target_os = "linux")]
+    clean_appimage_env(&mut c);
+    c
+}
+
+#[cfg(target_os = "linux")]
+fn clean_appimage_env(c: &mut std::process::Command) {
+    let Some(appdir) = std::env::var("APPDIR").ok().filter(|d| !d.is_empty()) else { return };
+    let inside = |p: &str| p.starts_with(&appdir) || p.contains("/.mount_");
+    // O Glint roda dentro da montagem do AppImage; o terminal e os apps abertos começam na pasta pessoal.
+    if let Some(home) = dirs::home_dir() {
+        c.current_dir(home);
+    }
+    for (k, v) in std::env::vars_os() {
+        let Some(key) = k.to_str() else { continue };
+        if matches!(key, "APPDIR" | "APPIMAGE" | "ARGV0" | "OWD" | "GTK_THEME" | "PYTHONHOME" | "PYTHONDONTWRITEBYTECODE") {
+            c.env_remove(&k);
+            continue;
+        }
+        let val = v.to_string_lossy();
+        if !val.split(':').any(inside) {
+            continue;
+        }
+        let kept: Vec<&str> = val.split(':').filter(|p| !p.is_empty() && !inside(p)).collect();
+        if kept.is_empty() {
+            c.env_remove(&k);
+        } else {
+            c.env(&k, kept.join(":"));
+        }
+    }
+}
+
+/// Abre arquivo, pasta ou link no programa padrão. No Linux usa o `xdg-open` com o ambiente limpo (ver `command`).
+pub fn open(target: impl AsRef<std::ffi::OsStr>) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("APPDIR").is_some() {
+        let mut child = command("xdg-open")
+            .arg(target.as_ref())
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+        return Ok(());
+    }
+    opener::open(target).map_err(|e| e.to_string())
+}

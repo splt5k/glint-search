@@ -41,7 +41,7 @@ fn apply_override(system_dark: bool) -> bool {
 
 #[cfg(not(windows))]
 pub fn current() -> Theme {
-    let dark = std::process::Command::new("gsettings")
+    let dark = crate::util::command("gsettings")
         .args(["get", "org.gnome.desktop.interface", "color-scheme"])
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).contains("dark"))

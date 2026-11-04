@@ -123,7 +123,7 @@ pub fn launch(app_id: &str, exec: &str) {
     #[cfg(not(windows))]
     {
         let _ = app_id;
-        let _ = std::process::Command::new("sh").arg("-c").arg(format!("nohup {} >/dev/null 2>&1 &", exec)).spawn();
+        let _ = crate::util::command("sh").arg("-c").arg(format!("nohup {} >/dev/null 2>&1 &", exec)).spawn();
     }
 }
 
