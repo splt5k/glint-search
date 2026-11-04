@@ -105,6 +105,8 @@ async fn search(state: St<'_>, query: String, filter: String) -> Result<Vec<Hit>
         let mut out: Vec<Hit> = Vec::new();
         let idx = state.index.read().unwrap().clone();
         let (max_apps, max_files, max_dirs, max_settings) = match filter.as_str() {
+            // tipo:/em:/data: só valem para arquivos e pastas
+            _ if index::has_filters(&query) => (0, 40, 15, 0),
             "apps" => (80, 0, 0, 0),
             "files" => (0, 40, 15, 0),
             "actions" => (0, 0, 0, 20),

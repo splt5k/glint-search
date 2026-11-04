@@ -80,9 +80,56 @@ const RUN: &[(&str, &str, &str, &str)] = &[
     ("snippingtool", "Ferramenta de Captura", "snippingtool.exe", ""),
     ("charmap", "Mapa de Caracteres", "charmap.exe", ""),
     ("osk", "Teclado Virtual", "osk.exe", ""),
+    ("fsmgmt.msc", "Pastas Compartilhadas", "mmc.exe", "fsmgmt.msc"),
+    ("comexp.msc", "Serviços de Componentes", "mmc.exe", "comexp.msc"),
+    ("wmimgmt.msc", "Controle do WMI", "mmc.exe", "wmimgmt.msc"),
+    ("certlm.msc", "Certificados do Computador", "mmc.exe", "certlm.msc"),
+    ("joy.cpl", "Controladores de Jogo", "control.exe", "joy.cpl"),
+    ("control userpasswords2", "Contas de Usuário", "control.exe", "userpasswords2"),
+    ("control fonts", "Fontes", "control.exe", "fonts"),
+    ("control folders", "Opções do Explorador de Arquivos", "control.exe", "folders"),
+    ("mrt", "Ferramenta de Remoção de Software Mal-Intencionado", "mrt.exe", ""),
+    ("cttune", "Ajuste do ClearType", "cttune.exe", ""),
+    ("magnify", "Lupa", "magnify.exe", ""),
+    ("narrator", "Narrador", "narrator.exe", ""),
+    ("odbcad32", "Fontes de Dados ODBC", "odbcad32.exe", ""),
+    ("systempropertiesadvanced", "Propriedades do Sistema (Avançado)", "systempropertiesadvanced.exe", ""),
+    ("ms-settings:", "Configurações do Windows", "explorer.exe", "ms-settings:"),
+    ("ms-settings:windowsupdate", "Windows Update", "explorer.exe", "ms-settings:windowsupdate"),
+    ("ms-settings:network", "Configurações de Rede", "explorer.exe", "ms-settings:network"),
+    ("ms-settings:display", "Configurações de Vídeo", "explorer.exe", "ms-settings:display"),
+    ("ms-settings:startupapps", "Aplicativos de Inicialização", "explorer.exe", "ms-settings:startupapps"),
+    ("ms-settings:apps-volume", "Mixer de Volume", "explorer.exe", "ms-settings:apps-volume"),
+    ("ms-screenclip:", "Recorte de Tela", "explorer.exe", "ms-screenclip:"),
     ("%temp%", "Pasta de arquivos temporários", "explorer.exe", "%TEMP%"),
+    ("%appdata%", "Pasta AppData\\Roaming", "explorer.exe", "%APPDATA%"),
+    ("%localappdata%", "Pasta AppData\\Local", "explorer.exe", "%LOCALAPPDATA%"),
+    ("%userprofile%", "Pasta do usuário", "explorer.exe", "%USERPROFILE%"),
+    ("%programdata%", "Pasta ProgramData", "explorer.exe", "%PROGRAMDATA%"),
+    ("%windir%", "Pasta do Windows", "explorer.exe", "%WINDIR%"),
     ("shell:startup", "Pasta Inicializar", "explorer.exe", "shell:startup"),
+    ("shell:common startup", "Pasta Inicializar (todos os usuários)", "explorer.exe", "shell:common startup"),
+    ("shell:programs", "Pasta Programas do Menu Iniciar", "explorer.exe", "shell:programs"),
+    ("shell:downloads", "Pasta Downloads", "explorer.exe", "shell:downloads"),
+    ("shell:sendto", "Pasta Enviar para", "explorer.exe", "shell:sendto"),
+    ("shell:recyclebinfolder", "Lixeira", "explorer.exe", "shell:recyclebinfolder"),
 ];
+
+/// Troca só as variáveis da lista abaixo (nunca expande texto digitado pelo usuário: os parâmetros vêm da tabela `RUN`).
+#[cfg(windows)]
+fn expand_vars(params: &str) -> String {
+    let mut out = params.to_string();
+    for v in ["TEMP", "APPDATA", "LOCALAPPDATA", "USERPROFILE", "PROGRAMDATA", "WINDIR"] {
+        if let Some(val) = std::env::var_os(v) {
+            let tag = format!("%{v}%");
+            if out == tag {
+                // caminho com espaço (ex.: C:\Users\Nome Sobrenome) precisa de aspas para o explorer
+                out = format!("\"{}\"", val.to_string_lossy());
+            }
+        }
+    }
+    out
+}
 
 /// Lista para a interface: (nome digitado, descrição). Vazia fora do Windows.
 pub fn run_list() -> Vec<(&'static str, &'static str)> {
@@ -260,7 +307,7 @@ pub fn run(a: &CmdArgs) -> Result<(), String> {
                 let Some(&(_, title, file, params)) = RUN.iter().find(|r| r.0 == a.name) else {
                     return Err("Comando desconhecido.".into());
                 };
-                let params = params.replace("%TEMP%", &std::env::temp_dir().to_string_lossy());
+                let params = expand_vars(params);
                 if shell_exec(if a.admin { "runas" } else { "open" }, file, &params) {
                     Ok(())
                 } else {

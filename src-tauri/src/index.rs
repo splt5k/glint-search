@@ -230,18 +230,34 @@ impl FileIndex {
 
     pub fn search(&self, query: &str, max_files: usize, max_dirs: usize) -> Vec<Hit> {
         let q = query.trim().to_lowercase();
-        if q.chars().count() < 2 {
+        // filtros (tipo:pdf em:downloads data:semana) saem da lista de palavras do nome
+        let (toks, fl) = parse_filters(&q);
+        let filtered = fl.kind.is_some() || fl.within.is_some() || fl.since.is_some();
+        if !filtered && q.chars().count() < 2 {
             return vec![];
         }
         // "maio .docx" = o nome precisa conter TODAS as palavras (em qualquer ordem); ".docx" também vale como extensão.
-        let toks: Vec<&str> = q.split_whitespace().collect();
         let main = toks.iter().filter(|t| !t.starts_with('.')).max_by_key(|t| t.chars().count()).copied().unwrap_or(q.as_str());
         let ext = toks.iter().find(|t| t.starts_with('.') && t.len() > 1).copied();
+        // só filtros, sem palavra: lista o mais recente primeiro
+        let only_filters = toks.is_empty();
 
         let now = std::time::SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs() as u32)
             .unwrap_or(0);
+
+        let dir_ok: Option<Vec<bool>> = fl.within.as_deref().map(|w| {
+            let terms = dir_terms(w);
+            self.dirs
+                .iter()
+                .map(|d| {
+                    let d = d.to_lowercase().replace('\\', "/");
+                    terms.iter().any(|t| d.contains(&format!("/{t}")))
+                })
+                .collect()
+        });
+        let kind_sel = fl.kind.as_deref();
 
         let mut cands: Vec<(i32, usize)> = self
             .ents
@@ -251,7 +267,26 @@ impl FileIndex {
                 let mut out = Vec::new();
                 for (i, e) in chunk.iter().enumerate() {
                     let ln = self.lname(e);
+                    if let Some(ok) = &dir_ok {
+                        if !ok[e.dir as usize] {
+                            continue;
+                        }
+                    }
+                    if let Some(secs) = fl.since {
+                        if e.mtime == 0 || now.saturating_sub(e.mtime) > secs {
+                            continue;
+                        }
+                    }
                     if toks.iter().all(|t| ln.contains(t)) {
+                        if filtered && !kind_ok(kind_sel, ln, e.is_dir) {
+                            continue;
+                        }
+                        if only_filters {
+                            if !self.noise[e.dir as usize] {
+                                out.push(((e.mtime >> 6) as i32, ci * 65_536 + i));
+                            }
+                            continue;
+                        }
                         let mut s = fuzzy::score_lower(main, ln).max(100);
                         if ext.map(|x| ln.ends_with(x)).unwrap_or(false) {
                             s += 30;
@@ -329,6 +364,77 @@ fn is_noise_dir(dir: &str) -> bool {
     ];
     let l = dir.to_lowercase();
     MARKS.iter().any(|m| l.contains(m))
+}
+
+#[derive(Default)]
+struct Filters {
+    kind: Option<String>,
+    within: Option<String>,
+    /// idade máxima em segundos
+    since: Option<u32>,
+}
+
+const FILTER_KEYS: &[&str] = &["tipo:", "em:", "data:"];
+
+fn is_filter_tok(t: &str) -> bool {
+    FILTER_KEYS.iter().any(|k| t.starts_with(k) && t.len() > k.len())
+}
+
+/// A busca tem filtro (tipo:, em:, data:)? Então só arquivos e pastas fazem sentido.
+pub fn has_filters(query: &str) -> bool {
+    let (_, f) = parse_filters(&query.to_lowercase());
+    f.kind.is_some() || f.within.is_some() || f.since.is_some()
+}
+
+/// Separa as palavras do nome dos filtros: `tipo:pdf`, `em:downloads`, `data:hoje|semana|mes|ano`.
+fn parse_filters(q: &str) -> (Vec<&str>, Filters) {
+    let mut f = Filters::default();
+    let mut words = Vec::new();
+    for t in q.split_whitespace() {
+        if !is_filter_tok(t) {
+            words.push(t);
+        } else if let Some(v) = t.strip_prefix("tipo:") {
+            f.kind = Some(v.trim_start_matches('.').to_string());
+        } else if let Some(v) = t.strip_prefix("em:") {
+            f.within = Some(v.to_string());
+        } else if let Some(v) = t.strip_prefix("data:") {
+            f.since = match v {
+                "hoje" => Some(86_400),
+                "semana" => Some(7 * 86_400),
+                "mes" | "mês" => Some(30 * 86_400),
+                "ano" => Some(365 * 86_400),
+                _ => None,
+            };
+        }
+    }
+    (words, f)
+}
+
+/// Nomes de pasta aceitos para `em:` (português e inglês, já que as pastas do Windows/Linux variam).
+fn dir_terms(w: &str) -> Vec<&str> {
+    match w {
+        "documentos" | "documents" => vec!["documents", "documentos"],
+        "downloads" | "baixados" => vec!["downloads", "transferências"],
+        "imagens" | "fotos" | "pictures" => vec!["pictures", "imagens"],
+        "desktop" | "area" | "trabalho" => vec!["desktop", "área de trabalho"],
+        "musicas" | "músicas" | "musica" | "music" => vec!["music", "músicas"],
+        "videos" | "vídeos" => vec!["videos", "vídeos"],
+        _ => vec![w],
+    }
+}
+
+/// `tipo:` aceita grupos (pdf, imagem, doc, midia, pasta) ou uma extensão qualquer (`tipo:xlsx`).
+fn kind_ok(sel: Option<&str>, lname: &str, is_dir: bool) -> bool {
+    let Some(sel) = sel else { return matches_kind("all", lname, is_dir) };
+    let group = match sel {
+        "pdf" => "pdf",
+        "imagem" | "imagens" | "foto" | "fotos" | "img" | "images" => "images",
+        "doc" | "docs" | "documento" | "documentos" => "docs",
+        "midia" | "mídia" | "media" | "video" | "vídeo" | "videos" | "audio" | "música" | "musica" => "media",
+        "pasta" | "pastas" | "folder" | "folders" => "folders",
+        _ => return !is_dir && ext_of(lname) == sel,
+    };
+    matches_kind(group, lname, is_dir)
 }
 
 fn ext_of(lname: &str) -> &str {
@@ -429,4 +535,33 @@ pub fn drive_roots() -> Vec<PathBuf> {
 #[cfg(not(any(windows, target_os = "linux")))]
 pub fn drive_roots() -> Vec<PathBuf> {
     dirs::home_dir().into_iter().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filtros_saem_das_palavras() {
+        let (w, f) = parse_filters("contrato tipo:pdf em:downloads data:semana");
+        assert_eq!(w, vec!["contrato"]);
+        assert_eq!(f.kind.as_deref(), Some("pdf"));
+        assert_eq!(f.within.as_deref(), Some("downloads"));
+        assert_eq!(f.since, Some(7 * 86_400));
+    }
+
+    #[test]
+    fn filtro_vazio_ou_desconhecido_nao_conta() {
+        assert!(!has_filters("tipo: em: data:ontem"));
+        assert!(has_filters("tipo:.xlsx"));
+    }
+
+    #[test]
+    fn tipo_grupo_e_extensao() {
+        assert!(kind_ok(Some("pdf"), "a.pdf", false));
+        assert!(!kind_ok(Some("pdf"), "a.docx", false));
+        assert!(kind_ok(Some("xlsx"), "a.xlsx", false));
+        assert!(kind_ok(Some("pasta"), "docs", true));
+        assert!(!kind_ok(Some("xlsx"), "a.xlsx", true));
+    }
 }
