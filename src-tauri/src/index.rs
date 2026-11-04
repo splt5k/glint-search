@@ -2,6 +2,7 @@ use crate::fuzzy;
 use rayon::prelude::*;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::UNIX_EPOCH;
 
 #[derive(Serialize, Clone, Debug, Default)]
@@ -39,6 +40,8 @@ pub struct FileIndex {
 }
 
 const MAX_ENTRIES: usize = 2_000_000;
+/// Teto de uma única pasta de primeiro nível: uma pasta gigante não pode engolir o índice inteiro.
+const MAX_PER_JOB: usize = MAX_ENTRIES / 2;
 const MAX_CANDIDATES: usize = 6000;
 
 const NOISE_DIRS: &[&str] = &[
@@ -83,14 +86,16 @@ fn is_system(_: &std::fs::Metadata) -> bool {
     false
 }
 
-fn scan(root: &Path, recursive: bool, budget: usize, exclude: &[PathBuf]) -> Part {
+/// `total` é o orçamento compartilhado por todas as varreduras: uma pasta grande usa o que as pequenas não usaram.
+fn scan(root: &Path, recursive: bool, total: &AtomicUsize, exclude: &[PathBuf]) -> Part {
     let mut part = Part::default();
     let mut stack = vec![root.to_path_buf()];
 
     while let Some(dir) = stack.pop() {
-        if part.ents.len() >= budget {
+        if part.ents.len() >= MAX_PER_JOB || total.load(Ordering::Relaxed) >= MAX_ENTRIES {
             break;
         }
+        let before = part.ents.len();
         let Ok(rd) = std::fs::read_dir(&dir) else { continue };
         let di = part.dirs.len() as u32;
         part.dirs.push(dir.to_string_lossy().into_owned());
@@ -123,6 +128,7 @@ fn scan(root: &Path, recursive: bool, budget: usize, exclude: &[PathBuf]) -> Par
             }
             part.ents.push(RawEnt { dir: di, name, is_dir, mtime });
         }
+        total.fetch_add(part.ents.len() - before, Ordering::Relaxed);
     }
     part
 }
@@ -154,8 +160,13 @@ impl FileIndex {
             }
         }
 
-        let budget = MAX_ENTRIES / jobs.len().max(1) + 50_000;
-        let parts: Vec<Part> = jobs.par_iter().map(|(p, rec)| scan(p, *rec, budget, exclude)).collect();
+        // Antes cada pasta tinha uma cota fixa (limite ÷ nº de pastas, ~100 mil com 3 discos): pastas grandes
+        // como Documentos ficavam cortadas no meio. Agora o limite é um só, compartilhado.
+        let total = AtomicUsize::new(0);
+        let parts: Vec<Part> = jobs.par_iter().map(|(p, rec)| scan(p, *rec, &total, exclude)).collect();
+        if total.load(Ordering::Relaxed) >= MAX_ENTRIES {
+            crate::dlog!("índice: limite de {} itens atingido; parte dos arquivos ficou de fora", MAX_ENTRIES);
+        }
 
         let mut idx = FileIndex::default();
         for part in parts {
