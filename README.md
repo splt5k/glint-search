@@ -40,6 +40,7 @@ Depois de instalado ele inicia com o sistema (dá para desligar nas Configuraç�
 - **Ctrl+,**: Configurações. **Ctrl+K**: palavra-atalho para o item selecionado. **Espaço / Ctrl+Y**: prévia rápida.
 - **Enter** abre ou executa; **Ctrl+Enter** mostra o arquivo na pasta.
 - **Comandos na busca** (rodam só no Enter, e o item mostra o comando exato): `ssh usuario@host[:porta]` (também completa os apelidos do seu `~/.ssh/config`), `ping host`, `rdp host` (Windows), `\\servidor\pasta` (pasta de rede), `192.168.0.1:8080` (abre no navegador) e `brave globo` / `chrome globo.com` / `firefox receita` (navegador com pesquisa ou site).
+- **Comandos do Executar (Windows):** `cmd`, `powershell`, `mstsc`, `ncpa.cpl`, `services.msc`, `devmgmt.msc`, `regedit`, `appwiz.cpl`, `%temp%`... pelo nome, pelo começo dele (`ncpa`) ou pela descrição (`serviços`). **Ctrl+Enter** executa como administrador.
 - **Sites conhecidos** (Gmail, YouTube, Hotmail/Outlook, WhatsApp Web, GitHub, ChatGPT...) aparecem pelo nome, com o ícone do site; Enter abre no navegador. O ícone vem do serviço de favicons do Google e dá para desligar em Configurações.
 - **Avisa quando há versão nova** (consulta o GitHub 1x por dia; desligável).
 - Busca de arquivos com várias palavras e extensão: `maio .docx` acha `ponto_maio.docx`.

@@ -22,6 +22,91 @@ pub struct CmdArgs {
     pub browser: String,
     #[serde(default)]
     pub path: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub admin: bool,
+}
+
+/// Comandos do "Executar" do Windows (Win+R) que a busca reconhece: (nome digitado, descrição, programa, parâmetros).
+/// Só o que está nesta lista roda; o texto digitado nunca vai direto para o sistema.
+/// `.cpl` e `.msc` passam pelo control/mmc para que "executar como administrador" também funcione.
+#[cfg(windows)]
+const RUN: &[(&str, &str, &str, &str)] = &[
+    ("cmd", "Prompt de Comando", "cmd.exe", ""),
+    ("powershell", "Windows PowerShell", "powershell.exe", ""),
+    ("pwsh", "PowerShell 7", "pwsh.exe", ""),
+    ("wt", "Terminal do Windows", "wt.exe", ""),
+    ("mstsc", "Conexão de Área de Trabalho Remota", "mstsc.exe", ""),
+    ("ncpa.cpl", "Conexões de Rede", "control.exe", "ncpa.cpl"),
+    ("appwiz.cpl", "Programas e Recursos", "control.exe", "appwiz.cpl"),
+    ("sysdm.cpl", "Propriedades do Sistema", "control.exe", "sysdm.cpl"),
+    ("inetcpl.cpl", "Opções da Internet", "control.exe", "inetcpl.cpl"),
+    ("firewall.cpl", "Firewall do Windows Defender", "control.exe", "firewall.cpl"),
+    ("mmsys.cpl", "Som", "control.exe", "mmsys.cpl"),
+    ("main.cpl", "Propriedades do Mouse", "control.exe", "main.cpl"),
+    ("desk.cpl", "Configurações de Vídeo", "control.exe", "desk.cpl"),
+    ("powercfg.cpl", "Opções de Energia", "control.exe", "powercfg.cpl"),
+    ("timedate.cpl", "Data e Hora", "control.exe", "timedate.cpl"),
+    ("intl.cpl", "Região", "control.exe", "intl.cpl"),
+    ("control", "Painel de Controle", "control.exe", ""),
+    ("control printers", "Dispositivos e Impressoras", "control.exe", "printers"),
+    ("devmgmt.msc", "Gerenciador de Dispositivos", "mmc.exe", "devmgmt.msc"),
+    ("diskmgmt.msc", "Gerenciamento de Disco", "mmc.exe", "diskmgmt.msc"),
+    ("services.msc", "Serviços", "mmc.exe", "services.msc"),
+    ("compmgmt.msc", "Gerenciamento do Computador", "mmc.exe", "compmgmt.msc"),
+    ("eventvwr.msc", "Visualizador de Eventos", "mmc.exe", "eventvwr.msc"),
+    ("taskschd.msc", "Agendador de Tarefas", "mmc.exe", "taskschd.msc"),
+    ("lusrmgr.msc", "Usuários e Grupos Locais", "mmc.exe", "lusrmgr.msc"),
+    ("gpedit.msc", "Editor de Política de Grupo Local", "mmc.exe", "gpedit.msc"),
+    ("secpol.msc", "Política de Segurança Local", "mmc.exe", "secpol.msc"),
+    ("wf.msc", "Firewall com Segurança Avançada", "mmc.exe", "wf.msc"),
+    ("certmgr.msc", "Certificados do Usuário", "mmc.exe", "certmgr.msc"),
+    ("printmanagement.msc", "Gerenciamento de Impressão", "mmc.exe", "printmanagement.msc"),
+    ("regedit", "Editor do Registro", "regedit.exe", ""),
+    ("msconfig", "Configuração do Sistema", "msconfig.exe", ""),
+    ("taskmgr", "Gerenciador de Tarefas", "taskmgr.exe", ""),
+    ("resmon", "Monitor de Recursos", "resmon.exe", ""),
+    ("perfmon", "Monitor de Desempenho", "perfmon.exe", ""),
+    ("msinfo32", "Informações do Sistema", "msinfo32.exe", ""),
+    ("winver", "Sobre o Windows", "winver.exe", ""),
+    ("dxdiag", "Ferramenta de Diagnóstico do DirectX", "dxdiag.exe", ""),
+    ("cleanmgr", "Limpeza de Disco", "cleanmgr.exe", ""),
+    ("dfrgui", "Otimizar Unidades", "dfrgui.exe", ""),
+    ("explorer", "Explorador de Arquivos", "explorer.exe", ""),
+    ("notepad", "Bloco de Notas", "notepad.exe", ""),
+    ("calc", "Calculadora", "calc.exe", ""),
+    ("mspaint", "Paint", "mspaint.exe", ""),
+    ("snippingtool", "Ferramenta de Captura", "snippingtool.exe", ""),
+    ("charmap", "Mapa de Caracteres", "charmap.exe", ""),
+    ("osk", "Teclado Virtual", "osk.exe", ""),
+    ("%temp%", "Pasta de arquivos temporários", "explorer.exe", "%TEMP%"),
+    ("shell:startup", "Pasta Inicializar", "explorer.exe", "shell:startup"),
+];
+
+/// Lista para a interface: (nome digitado, descrição). Vazia fora do Windows.
+pub fn run_list() -> Vec<(&'static str, &'static str)> {
+    #[cfg(windows)]
+    {
+        RUN.iter().map(|r| (r.0, r.1)).collect()
+    }
+    #[cfg(not(windows))]
+    {
+        Vec::new()
+    }
+}
+
+/// ShellExecute: resolve o programa pelo "App Paths" do Windows e não passa por cmd. `runas` pede elevação (UAC).
+#[cfg(windows)]
+fn shell_exec(verb: &str, file: &str, params: &str) -> bool {
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    let w = |s: &str| -> Vec<u16> { s.encode_utf16().chain(Some(0)).collect() };
+    let (op, f, p) = (w(verb), w(file), w(params));
+    let par = if params.is_empty() { PCWSTR::null() } else { PCWSTR(p.as_ptr()) };
+    let r = unsafe { ShellExecuteW(None, PCWSTR(op.as_ptr()), PCWSTR(f.as_ptr()), par, PCWSTR::null(), SW_SHOWNORMAL) };
+    r.0 as isize > 32
 }
 
 fn valid_name(s: &str, max: usize) -> bool {
@@ -78,9 +163,6 @@ fn in_terminal(prog: &str, args: &[String]) -> Result<(), String> {
 
 #[cfg(windows)]
 fn open_in_browser(browser: &str, url: &str) -> Result<(), String> {
-    use windows::core::PCWSTR;
-    use windows::Win32::UI::Shell::ShellExecuteW;
-    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
     let exe = match browser {
         "brave" => "brave.exe",
         "chrome" => "chrome.exe",
@@ -90,11 +172,7 @@ fn open_in_browser(browser: &str, url: &str) -> Result<(), String> {
         "vivaldi" => "vivaldi.exe",
         _ => return Err("Navegador desconhecido.".into()),
     };
-    let w = |s: &str| -> Vec<u16> { s.encode_utf16().chain(Some(0)).collect() };
-    let (op, file, par) = (w("open"), w(exe), w(&format!("\"{url}\"")));
-    // ShellExecute resolve o programa pelo "App Paths" do Windows e não passa por cmd.
-    let r = unsafe { ShellExecuteW(None, PCWSTR(op.as_ptr()), PCWSTR(file.as_ptr()), PCWSTR(par.as_ptr()), PCWSTR::null(), SW_SHOWNORMAL) };
-    if r.0 as isize > 32 {
+    if shell_exec("open", exe, &format!("\"{url}\"")) {
         Ok(())
     } else {
         Err(format!("Não consegui abrir o {browser}. Ele está instalado?"))
@@ -175,6 +253,24 @@ pub fn run(a: &CmdArgs) -> Result<(), String> {
                 return Err("Endereço inválido.".into());
             }
             open_in_browser(&a.browser, &a.url)
+        }
+        "run" => {
+            #[cfg(windows)]
+            {
+                let Some(&(_, title, file, params)) = RUN.iter().find(|r| r.0 == a.name) else {
+                    return Err("Comando desconhecido.".into());
+                };
+                let params = params.replace("%TEMP%", &std::env::temp_dir().to_string_lossy());
+                if shell_exec(if a.admin { "runas" } else { "open" }, file, &params) {
+                    Ok(())
+                } else {
+                    Err(format!("Não consegui abrir: {title}."))
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                Err("Esse comando só existe no Windows.".into())
+            }
         }
         _ => Err("Comando desconhecido.".into()),
     }

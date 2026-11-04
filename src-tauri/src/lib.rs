@@ -301,6 +301,12 @@ async fn ssh_hosts() -> Vec<String> {
     cmd::ssh_hosts()
 }
 
+/// Comandos do "Executar" do Windows (cmd, mstsc, ncpa.cpl...) que a busca reconhece.
+#[tauri::command]
+fn run_list() -> Vec<(&'static str, &'static str)> {
+    cmd::run_list()
+}
+
 /// Pede para um item nunca aparecer nas sugestões (e zera o uso dele).
 #[tauri::command]
 async fn suggest_hide(state: St<'_>, id: String, title: String) -> Result<(), String> {
@@ -610,7 +616,7 @@ pub fn run() {
         .manage(state.clone())
         .invoke_handler(tauri::generate_handler![
             search, list_apps, recent, open_item, reveal, file_info, clip_list, clip_copy, clip_delete,
-            clip_clear, copy_text, run_action, usage_get, usage_forget, suggest_hide, suggest_pin, app_reveal, app_uninstall, run_cmd, ssh_hosts, update_check, update_install, quick_get, quick_set, quick_remove, hide_window,
+            clip_clear, copy_text, run_action, usage_get, usage_forget, suggest_hide, suggest_pin, app_reveal, app_uninstall, run_cmd, ssh_hosts, run_list, update_check, update_install, quick_get, quick_set, quick_remove, hide_window,
             resize_window, reindex_now, config_get, config_set, config_export, config_import
         ])
         .on_window_event(|win, event| {

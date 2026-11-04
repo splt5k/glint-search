@@ -267,6 +267,8 @@ function sectionize(list, { withTop = true } = {}) {
 // ───────────────────────── comandos digitados ─────────────────────────
 // ssh, rdp, ping, pasta de rede, IP e "navegador pesquisa". Nada roda sem Enter; o comando exato aparece no item.
 let sshHosts = [];
+let runCmds = []; // Windows: [nome, descrição] dos comandos do "Executar" (cmd, mstsc, ncpa.cpl...)
+const fold = (t) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const NAME = '[A-Za-z0-9][A-Za-z0-9._-]*';
 const BROWSERS = { brave: 'Brave', chrome: 'Chrome', firefox: 'Firefox', edge: 'Edge', msedge: 'Edge', opera: 'Opera', vivaldi: 'Vivaldi' };
 const cmdItem = (id, cmd, title, sub, tile, color, score = 1400) => ({ id: 'cmd:' + id, kind: 'cmd', cmd, title, sub, tile, color, score });
@@ -303,7 +305,24 @@ function commandItems(q) {
     const url = isUrl ? (/^https?:\/\//i.test(rest) ? rest : 'https://' + rest) : `https://www.google.com/search?q=${enc(rest)}`;
     out.push(cmdItem(`browser:${b}:${rest}`, { kind: 'browser', browser: b, url }, isUrl ? `Abrir ${rest} no ${name}` : `Pesquisar "${rest}" no ${name}`, `Abre o ${name} direto`, 'globe', '#0a84ff', 1420));
   }
+  out.push(...runItems(q));
   return out;
+}
+
+// Comandos do "Executar" do Windows: pelo nome exato (cmd, ncpa.cpl), pelo começo dele (ncpa) ou pela descrição (serviços).
+function runItems(q) {
+  const t = fold(q.trim());
+  if (!runCmds.length || t.length < 2) return [];
+  const hits = [];
+  for (const [name, title] of runCmds) {
+    const base = name.replace(/\.(cpl|msc)$/, '');
+    let score = 0;
+    if (t === name || t === base) score = 1460;
+    else if (t.length >= 3 && name.startsWith(t)) score = 1380;
+    else if (t.length >= 4 && fold(title).split(/\s+/).some((w) => w.startsWith(t))) score = 1150;
+    if (score) hits.push(cmdItem('run:' + name, { kind: 'run', name }, title, `Executar: ${name} · Ctrl+Enter como administrador`, name.startsWith('%') || name.startsWith('shell:') ? 'folder' : /^(cmd|powershell|pwsh|wt)$/.test(name) ? 'term' : 'gear', '#0a84ff', score));
+  }
+  return hits.sort((a, b) => b.score - a.score).slice(0, 5);
 }
 
 function serviceItems(q) {
@@ -481,7 +500,7 @@ async function activate(it, ctrl = false) {
     }
     case 'cmd':
       if (it.cmd.kind === 'url') await runAction('url', { url: it.cmd.url });
-      else { try { await invoke('run_cmd', { args: it.cmd }); } catch (e) { toast(String(e)); return; } }
+      else { try { await invoke('run_cmd', { args: it.cmd.kind === 'run' ? { ...it.cmd, admin: ctrl } : it.cmd }); } catch (e) { toast(String(e)); return; } }
       hide();
       break;
     case 'nlp':
@@ -960,6 +979,7 @@ async function onShown(p) {
   [usage, quick, meta] = await Promise.all([invoke('usage_get'), invoke('quick_get'), invoke('config_get')]);
   neverSuggest = new Set(meta.config.never_suggest.map((h) => h.id));
   invoke('ssh_hosts').then((h) => { sshHosts = h; }).catch(() => {});
+  if (IS_WIN && !runCmds.length) invoke('run_list').then((l) => { runCmds = l; }).catch(() => {});
   pinnedIds = new Set(meta.config.pinned.map((h) => h.id));
   webIcons = meta.config.web_icons !== false;
   checkUpdates = meta.config.check_updates !== false;
